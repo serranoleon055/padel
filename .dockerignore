@@ -1,0 +1,12 @@
+target/
+uploads/
+*.log
+logs_backend.txt
+logs_error.txt
+compile_out.txt
+compile_err.txt
+.git
+.github
+.vscode
+.idea
+HELP.md
