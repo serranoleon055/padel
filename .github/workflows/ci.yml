@@ -1,0 +1,27 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Tests unitarios de servicios (sin base de datos)
+        run: |
+          chmod +x mvnw
+          ./mvnw -B test -Dtest='*ServiceTest'
+
+      - name: Compilar y empaquetar
+        run: ./mvnw -B -DskipTests package
