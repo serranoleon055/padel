@@ -3,9 +3,11 @@ package com.padel.rankpadel.service;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -15,6 +17,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.cloudinary.Cloudinary;
+import com.cloudinary.utils.ObjectUtils;
 import com.padel.rankpadel.exception.EstadoInvalidoException;
 
 @Service
@@ -29,6 +33,18 @@ public class ImageStorageService {
 
     @Value("${app.upload.public-base-url:/uploads}")
     private String publicBaseUrl;
+
+    // Cloudinary (opcional). Si cloud-name está definido, se usa Cloudinary en lugar del disco.
+    @Value("${app.cloudinary.cloud-name:}")
+    private String cloudName;
+
+    @Value("${app.cloudinary.api-key:}")
+    private String apiKey;
+
+    @Value("${app.cloudinary.api-secret:}")
+    private String apiSecret;
+
+    private volatile Cloudinary cloudinary;
 
     public String guardarJugadorFoto(Long jugadorId, MultipartFile file) {
         return guardar("jugadores", "jugador-" + jugadorId, file);
@@ -48,22 +64,54 @@ public class ImageStorageService {
             }
 
             BufferedImage resized = resize(original);
-            Path directory = Path.of(uploadDir, carpeta).toAbsolutePath().normalize();
-            Files.createDirectories(directory);
 
-            String filename = prefijo + "-" + UUID.randomUUID() + ".jpg";
-            Path target = directory.resolve(filename).normalize();
-            ImageIO.write(resized, "jpg", target.toFile());
-
-            return publicBaseUrl.replaceAll("/+$", "") + "/" + carpeta + "/" + filename;
+            if (cloudinaryHabilitado()) {
+                return subirACloudinary(resized, carpeta, prefijo);
+            }
+            return guardarEnDisco(resized, carpeta, prefijo);
         } catch (IOException e) {
             throw new EstadoInvalidoException("No se pudo procesar la imagen");
         }
     }
 
-    /** Borra el archivo físico asociado a una URL pública previamente generada. No falla si no existe. */
+    private String guardarEnDisco(BufferedImage resized, String carpeta, String prefijo) throws IOException {
+        Path directory = Path.of(uploadDir, carpeta).toAbsolutePath().normalize();
+        Files.createDirectories(directory);
+
+        String filename = prefijo + "-" + UUID.randomUUID() + ".jpg";
+        Path target = directory.resolve(filename).normalize();
+        ImageIO.write(resized, "jpg", target.toFile());
+
+        return publicBaseUrl.replaceAll("/+$", "") + "/" + carpeta + "/" + filename;
+    }
+
+    private String subirACloudinary(BufferedImage resized, String carpeta, String prefijo) throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ImageIO.write(resized, "jpg", baos);
+
+        Map<String, Object> opciones = ObjectUtils.asMap(
+                "folder", "rankpadel/" + carpeta,
+                "public_id", prefijo + "-" + UUID.randomUUID(),
+                "resource_type", "image",
+                "overwrite", true);
+
+        Map<?, ?> resultado = getCloudinary().uploader().upload(baos.toByteArray(), opciones);
+        Object secureUrl = resultado.get("secure_url");
+        if (secureUrl == null) {
+            throw new EstadoInvalidoException("No se pudo subir la imagen");
+        }
+        return secureUrl.toString();
+    }
+
+    /** Borra la imagen asociada a una URL pública previamente generada (Cloudinary o disco). Best-effort. */
     public void borrarPorUrl(String url) {
         if (url == null) return;
+
+        if (url.contains("res.cloudinary.com")) {
+            borrarDeCloudinary(url);
+            return;
+        }
+
         String base = publicBaseUrl.replaceAll("/+$", "");
         if (!url.startsWith(base + "/")) return;
         String relativo = url.substring(base.length() + 1);
@@ -76,6 +124,51 @@ public class ImageStorageService {
         } catch (IOException ignored) {
             // Borrado best-effort: si el archivo no se puede eliminar, no interrumpimos la operación.
         }
+    }
+
+    private void borrarDeCloudinary(String url) {
+        try {
+            String publicId = extraerPublicId(url);
+            if (publicId != null) {
+                getCloudinary().uploader().destroy(publicId, ObjectUtils.asMap("resource_type", "image"));
+            }
+        } catch (Exception ignored) {
+            // Best-effort: no interrumpimos la operación si el borrado remoto falla.
+        }
+    }
+
+    /**
+     * Extrae el public_id de una URL de Cloudinary.
+     * Ej: https://res.cloudinary.com/demo/image/upload/v123/rankpadel/jugadores/x.jpg
+     *     -> rankpadel/jugadores/x
+     */
+    private String extraerPublicId(String url) {
+        int idx = url.indexOf("/upload/");
+        if (idx < 0) return null;
+        String resto = url.substring(idx + "/upload/".length());
+        resto = resto.replaceFirst("^v\\d+/", ""); // quitar versión
+        int punto = resto.lastIndexOf('.');
+        if (punto > 0) resto = resto.substring(0, punto); // quitar extensión
+        return resto;
+    }
+
+    private boolean cloudinaryHabilitado() {
+        return cloudName != null && !cloudName.isBlank();
+    }
+
+    private Cloudinary getCloudinary() {
+        if (cloudinary == null) {
+            synchronized (this) {
+                if (cloudinary == null) {
+                    cloudinary = new Cloudinary(ObjectUtils.asMap(
+                            "cloud_name", cloudName,
+                            "api_key", apiKey,
+                            "api_secret", apiSecret,
+                            "secure", true));
+                }
+            }
+        }
+        return cloudinary;
     }
 
     private void validar(MultipartFile file) {
