@@ -10,8 +10,11 @@ plataforma.
 
 1. Crear un proyecto en Railway y añadir el plugin **MySQL**.
 2. Desplegar este repo (Railway detecta el `Dockerfile` automáticamente).
-3. Añadir un **Volume** persistente montado en `/data/uploads` (si no, las imágenes
-   subidas se borran en cada redeploy).
+3. Almacenamiento de imágenes (elegí una opción):
+   - **Cloudinary (recomendado):** creá una cuenta gratis, copiá `cloud_name`, `api_key`
+     y `api_secret` a las variables `CLOUDINARY_*`. No hace falta volumen.
+   - **Volumen:** si no usás Cloudinary, añadí un **Volume** persistente montado en
+     `/data/uploads` (si no, las imágenes subidas se borran en cada redeploy).
 4. Configurar las variables de entorno (Settings → Variables):
 
 | Variable | Obligatoria | Ejemplo / Nota |
@@ -24,8 +27,11 @@ plataforma.
 | `ADMIN_INITIAL_PASSWORD` | sí | contraseña fuerte del admin (mín. 8 caracteres) |
 | `ADMIN_USERNAME` | no | default `admin` |
 | `APP_CORS_ALLOWED_ORIGINS` | sí | URL del frontend, p. ej. `https://rankpadel.vercel.app` (varias separadas por coma) |
-| `UPLOAD_DIR` | sí | `/data/uploads` (ruta del volumen) |
+| `UPLOAD_DIR` | sí (si no usás Cloudinary) | `/data/uploads` (ruta del volumen) |
 | `UPLOAD_PUBLIC_BASE_URL` | no | default `/uploads` |
+| `CLOUDINARY_CLOUD_NAME` | no | Si lo definís, las imágenes van a Cloudinary (recomendado) en vez del volumen |
+| `CLOUDINARY_API_KEY` | no | API key de tu cuenta Cloudinary |
+| `CLOUDINARY_API_SECRET` | no | API secret de tu cuenta Cloudinary |
 | `JWT_EXPIRATION_MS` | no | default `86400000` (24 h) |
 | `LOGIN_MAX_ATTEMPTS` | no | default `10` |
 | `LOGIN_WINDOW_SECONDS` | no | default `60` |
