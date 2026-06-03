@@ -75,7 +75,23 @@ plataforma.
 
 ---
 
-## 4. Desarrollo local (sin cambios)
+## 4. Backups y monitoreo
+
+**Backups de la base de datos (importante):**
+- Activá los backups automáticos del MySQL gestionado:
+  - *Railway*: en el plugin MySQL → habilitar backups/snapshots y definir retención.
+  - *Aiven/PlanetScale*: backups diarios vienen incluidos; revisá la política de retención.
+- Probá una restauración al menos una vez (un backup que nunca se restauró no es un backup).
+- Para un volcado manual: `mysqldump -h <host> -u <user> -p rankpadel_db > backup.sql`.
+
+**Monitoreo / uptime:**
+- Configurá un monitor externo (UptimeRobot, Better Stack o similar) que haga ping a
+  `https://<backend>/actuator/health` cada pocos minutos y avise por mail si cae.
+- Vercel y Railway exponen sus propios logs y métricas; revisalos ante incidentes.
+
+---
+
+## 5. Desarrollo local (sin cambios)
 
 - Backend: `./mvnw spring-boot:run` (perfil por defecto, usa MySQL local y el secreto de dev).
 - Frontend: `npm run dev` (proxy a `http://localhost:8080`).
