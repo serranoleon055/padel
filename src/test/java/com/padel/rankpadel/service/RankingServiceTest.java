@@ -23,6 +23,7 @@ import com.padel.rankpadel.enums.Genero;
 import com.padel.rankpadel.repository.ConfiguracionPuntosRepository;
 import com.padel.rankpadel.repository.ParejaRepository;
 import com.padel.rankpadel.repository.RankingEntryRepository;
+import com.padel.rankpadel.repository.TemporadaRepository;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("RankingService - Tests Unitarios")
@@ -36,6 +37,9 @@ class RankingServiceTest {
 
     @Mock
     private ParejaRepository parejaRepository;
+
+    @Mock
+    private TemporadaRepository temporadaRepository;
 
     @InjectMocks
     private RankingService rankingService;

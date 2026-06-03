@@ -365,7 +365,9 @@ class TorneoServiceTest {
 
             assertThat(torneoNuevo.getPlantillaFormatoId()).isEqualTo(5L);
             assertThat(torneoNuevo.getPlantillaFormatoNombre()).isEqualTo("12 parejas - 4 grupos");
-            assertThat(torneoNuevo.getFormato()).isEqualTo(FormatoTorneo.MINITORNEO);
+            // El formato explícito del request tiene prioridad sobre el de la plantilla
+            // (ver aplicarPlantillaFormatoSiCorresponde: solo copia el formato si el torneo no trae uno).
+            assertThat(torneoNuevo.getFormato()).isEqualTo(FormatoTorneo.ELIMINACION_DIRECTA);
             assertThat(torneoNuevo.getTipoSorteo()).isEqualTo(TipoSorteo.CABEZAS_SERIE);
             assertThat(torneoNuevo.getCantidadParejasObjetivo()).isEqualTo(12);
             assertThat(torneoNuevo.getCantidadGrupos()).isEqualTo(4);
@@ -425,14 +427,15 @@ class TorneoServiceTest {
         }
 
         @Test
-        @DisplayName("Configuracion manual de puntos tiene prioridad sobre la plantilla elegida")
-        void crear_conPlantillaYConfiguracionManual_priorizaManual() {
+        @DisplayName("Configuracion manual de puntos se aplica cuando no se elige plantilla")
+        void crear_conConfiguracionManual_aplicaConfigManual() {
+            // El frontend envía config manual SOLO cuando no hay plantilla de puntos
+            // seleccionada (ver TournamentFormPage: configuracionPuntos = plantillaPuntosId ? [] : manual).
             TorneoRequest request = TorneoRequest.builder()
                     .nombre("Nuevo Torneo")
                     .formato(FormatoTorneo.MINITORNEO)
                     .fechaInicio(LocalDate.of(2025, 12, 1))
                     .tipoSorteo(TipoSorteo.ALEATORIO)
-                    .plantillaPuntosId(7L)
                     .configuracionPuntos(List.of(ConfiguracionPuntosRequest.builder()
                             .nombreRonda("Final especial")
                             .puntosGanador(150)
@@ -442,20 +445,8 @@ class TorneoServiceTest {
                     .build();
 
             Torneo torneoNuevo = Torneo.builder().build();
-            PlantillaPuntos plantilla = PlantillaPuntos.builder()
-                    .id(7L)
-                    .nombre("Ranking estandar")
-                    .activo(true)
-                    .build();
-            plantilla.agregarRonda(PlantillaPuntosRonda.builder()
-                    .nombreRonda("Final")
-                    .puntosGanador(100)
-                    .puntosPerdedor(70)
-                    .orden(1)
-                    .build());
 
             when(torneoMapper.requestToTorneo(any(), any(), any())).thenReturn(torneoNuevo);
-            when(plantillaPuntosRepository.findByIdAndActivoTrue(7L)).thenReturn(Optional.of(plantilla));
             when(torneoRepository.save(any())).thenReturn(torneoNuevo);
             when(torneoMapper.torneoToResponse(any())).thenReturn(torneoResponseBase);
 
