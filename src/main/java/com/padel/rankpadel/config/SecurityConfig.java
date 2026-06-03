@@ -69,8 +69,8 @@ public class SecurityConfig {
                         .requestMatchers("/uploads/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/v3/api-docs.yaml").permitAll()
-                        // Lo demas necesita autenticacion
-                        .anyRequest().authenticated())
+                        // Lo demas requiere ser administrador
+                        .anyRequest().hasRole("ADMIN"))
                 // Devolver 401 (no 403) cuando no hay token o expiró, para que el
                 // frontend limpie la sesión y redirija al login.
                 .exceptionHandling(ex -> ex.authenticationEntryPoint(

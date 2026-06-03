@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.util.List;
 
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import org.springframework.stereotype.Component;
@@ -40,8 +41,9 @@ public class JwtFilter extends OncePerRequestFilter {
 
         if (jwtUtil.validateToken(token)) {
             String username = jwtUtil.extractUsername(token);
+            String role = jwtUtil.extractRole(token);
             UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(username, null,
-                    List.of());
+                    List.of(new SimpleGrantedAuthority(role)));
             SecurityContextHolder.getContext().setAuthentication(authToken);
         }
 

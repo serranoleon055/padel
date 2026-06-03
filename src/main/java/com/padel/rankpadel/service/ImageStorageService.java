@@ -88,6 +88,35 @@ public class ImageStorageService {
         if (!ALLOWED_TYPES.contains(file.getContentType())) {
             throw new EstadoInvalidoException("La imagen debe ser JPG o PNG");
         }
+        // El Content-Type es falsificable: validamos también la cabecera real del archivo.
+        if (!esJpegOPng(file)) {
+            throw new EstadoInvalidoException("El archivo no es una imagen JPG o PNG válida");
+        }
+    }
+
+    /** Verifica los magic bytes: JPEG (FF D8 FF) o PNG (89 50 4E 47 0D 0A 1A 0A). */
+    private boolean esJpegOPng(MultipartFile file) {
+        try {
+            byte[] head = new byte[8];
+            int leidos;
+            try (var in = file.getInputStream()) {
+                leidos = in.read(head);
+            }
+            if (leidos < 3) {
+                return false;
+            }
+            boolean esJpeg = (head[0] & 0xFF) == 0xFF
+                    && (head[1] & 0xFF) == 0xD8
+                    && (head[2] & 0xFF) == 0xFF;
+            boolean esPng = leidos >= 8
+                    && (head[0] & 0xFF) == 0x89 && (head[1] & 0xFF) == 0x50
+                    && (head[2] & 0xFF) == 0x4E && (head[3] & 0xFF) == 0x47
+                    && (head[4] & 0xFF) == 0x0D && (head[5] & 0xFF) == 0x0A
+                    && (head[6] & 0xFF) == 0x1A && (head[7] & 0xFF) == 0x0A;
+            return esJpeg || esPng;
+        } catch (IOException e) {
+            return false;
+        }
     }
 
     private BufferedImage resize(BufferedImage original) {
