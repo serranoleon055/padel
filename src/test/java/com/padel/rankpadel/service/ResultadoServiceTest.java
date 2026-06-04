@@ -217,5 +217,29 @@ class ResultadoServiceTest {
 
             verify(torneoRepository).save(any(Torneo.class));
         }
+
+        @Test
+        @DisplayName("Final de una categoría NO finaliza el torneo si otra categoría sigue con partidos pendientes")
+        void cargarResultado_finalDeCategoria_noFinalizaSiQuedanOtrasCategorias() {
+            when(partidoRepository.findById(100L)).thenReturn(Optional.of(partidoPendiente));
+            when(partidoRepository.findByRondaId(5L)).thenReturn(List.of(partidoPendiente));
+            when(partidoRepository.findByRondaIdOrderByOrdenLlaveAscIdAsc(5L))
+                    .thenReturn(List.of(partidoPendiente));
+            // Otra categoría del mismo torneo todavía tiene un partido (de grupos) sin jugar.
+            Partido pendienteOtraCategoria = Partido.builder()
+                    .id(200L).torneo(torneo)
+                    .estado(EstadoPartido.PENDIENTE).fase(FasePartido.GRUPOS)
+                    .build();
+            when(partidoRepository.findByTorneoId(1L))
+                    .thenReturn(List.of(partidoPendiente, pendienteOtraCategoria));
+            when(partidoMapper.partidoToResponse(any())).thenReturn(
+                    com.padel.rankpadel.dto.response.PartidoResponse.builder().id(100L).build());
+
+            resultadoService.cargarResultado(1L, 100L, new ResultadoRequest("6-3 / 6-4"));
+
+            // El torneo NO debe finalizarse ni cerrarse el ranking todavía.
+            verify(torneoRepository, never()).save(any(Torneo.class));
+            verify(rankingService, never()).cerrarTorneo(any());
+        }
     }
 }

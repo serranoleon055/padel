@@ -323,14 +323,18 @@ public class ResultadoService {
                 .collect(Collectors.toList());
 
         if (ganadores.size() == 1) {
-            // Es la final de esta categoría. Solo finalizar el torneo cuando
-            // TODAS las categorías hayan completado su fase de eliminación.
+            // Es la final de esta categoría. El torneo se finaliza SOLO cuando todas
+            // las categorías completaron su cuadro. Antes se miraban únicamente los
+            // partidos de fase ELIMINACIÓN ya existentes, así que si otra categoría
+            // seguía en fase de grupos (su llave aún no se había generado) el torneo
+            // se daba por finalizado de más y bloqueaba cargar los partidos restantes.
+            // Ahora exigimos que no quede ningún partido PENDIENTE/EN_CURSO en todo el
+            // torneo (grupos + eliminación de TODAS las categorías).
             Torneo torneo = partido.getTorneo();
-            List<Partido> todasElims = partidoRepository.findByTorneoIdAndFase(torneo.getId(), FasePartido.ELIMINACION);
-            boolean todasFinalizadas = todasElims.stream()
-                    .allMatch(p -> p.getEstado() != EstadoPartido.PENDIENTE
-                            && p.getEstado() != EstadoPartido.EN_CURSO);
-            if (todasFinalizadas) {
+            boolean quedanPartidosPorJugar = partidoRepository.findByTorneoId(torneo.getId()).stream()
+                    .anyMatch(p -> p.getEstado() == EstadoPartido.PENDIENTE
+                            || p.getEstado() == EstadoPartido.EN_CURSO);
+            if (!quedanPartidosPorJugar) {
                 torneo.setEstado(EstadoTorneo.FINALIZADO);
                 torneoRepository.save(torneo);
                 rankingService.cerrarTorneo(torneo.getId());
