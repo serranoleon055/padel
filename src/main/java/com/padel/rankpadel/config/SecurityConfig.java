@@ -54,6 +54,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // Rutas públicas — cualquiera puede acceder
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        // Healthcheck de Railway/monitoreo (sin auth)
+                        .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/auth/login").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/jugadores/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/categorias/**").permitAll()
