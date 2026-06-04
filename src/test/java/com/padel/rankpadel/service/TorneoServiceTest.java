@@ -182,8 +182,8 @@ class TorneoServiceTest {
         }
 
         @Test
-        @DisplayName("FINALIZADO → cualquier estado: no permite transición desde estado terminal")
-        void cambiarEstado_desdeEstadoFinalizado_lanzaExcepcion() {
+        @DisplayName("FINALIZADO → BORRADOR: transición inválida (no se puede volver a edición)")
+        void cambiarEstado_desdeEstadoFinalizadoABorrador_lanzaExcepcion() {
             torneoBase.setEstado(EstadoTorneo.FINALIZADO);
             when(torneoRepository.findById(1L)).thenReturn(Optional.of(torneoBase));
 
@@ -191,6 +191,22 @@ class TorneoServiceTest {
                     () -> torneoService.cambiarEstado(1L, EstadoTorneo.BORRADOR));
 
             verify(torneoRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("FINALIZADO → EN_CURSO: reabre el torneo y deshace el cierre de ranking")
+        void cambiarEstado_finalizadoAEnCurso_reabreYDeshaceCierre() {
+            torneoBase.setEstado(EstadoTorneo.FINALIZADO);
+            when(torneoRepository.findById(1L)).thenReturn(Optional.of(torneoBase));
+            when(partidoRepository.countByTorneoId(1L)).thenReturn(10L);
+            when(torneoMapper.torneoToResponse(any(Torneo.class))).thenReturn(
+                    TorneoResponse.builder().estado(EstadoTorneo.EN_CURSO).build());
+
+            torneoService.cambiarEstado(1L, EstadoTorneo.EN_CURSO);
+
+            assertThat(torneoBase.getEstado()).isEqualTo(EstadoTorneo.EN_CURSO);
+            verify(rankingService).reabrirTorneo(1L);
+            verify(torneoRepository).save(torneoBase);
         }
 
         @Test

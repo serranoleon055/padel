@@ -67,7 +67,9 @@ public class TorneoService {
             EstadoTorneo.INSCRIPCION, List.of(EstadoTorneo.BORRADOR, EstadoTorneo.CANCELADO),
             EstadoTorneo.SORTEADO, List.of(EstadoTorneo.EN_CURSO, EstadoTorneo.CANCELADO),
             EstadoTorneo.EN_CURSO, List.of(EstadoTorneo.FINALIZADO),
-            EstadoTorneo.FINALIZADO, List.of(),
+            // FINALIZADO → EN_CURSO permite reabrir un torneo finalizado por error
+            // (p. ej. para cargar partidos de categorías que quedaron sin jugar).
+            EstadoTorneo.FINALIZADO, List.of(EstadoTorneo.EN_CURSO),
             EstadoTorneo.CANCELADO, List.of());
 
     @Transactional(readOnly = true)
@@ -197,7 +199,8 @@ public class TorneoService {
         Torneo torneo = torneoRepository.findById(torneoId)
                 .orElseThrow(() -> new ResourceNotFoundException("Torneo", torneoId));
 
-        validarTransicion(torneo.getEstado(), nuevoEstado);
+        EstadoTorneo estadoAnterior = torneo.getEstado();
+        validarTransicion(estadoAnterior, nuevoEstado);
 
         if (nuevoEstado.equals(EstadoTorneo.EN_CURSO)) {
             long totalPartidos = partidoRepository.countByTorneoId(torneoId);
@@ -205,6 +208,13 @@ public class TorneoService {
                 throw new EstadoInvalidoException(
                         "No se puede iniciar un torneo sin partidos. Generá el sorteo primero.");
             }
+        }
+
+        // Reapertura de un torneo finalizado por error (FINALIZADO → EN_CURSO):
+        // deshacemos el cierre de ranking para que el contador de "torneos jugados"
+        // no se duplique cuando el torneo vuelva a finalizarse.
+        if (estadoAnterior.equals(EstadoTorneo.FINALIZADO) && nuevoEstado.equals(EstadoTorneo.EN_CURSO)) {
+            rankingService.reabrirTorneo(torneoId);
         }
 
         torneo.setEstado(nuevoEstado);
