@@ -214,6 +214,40 @@ public class RankingService {
         }
     }
 
+    /**
+     * Reapertura de un torneo previamente finalizado: deshace el incremento de
+     * "torneos jugados" que aplicó {@link #cerrarTorneo}, para que no se duplique
+     * cuando el torneo se vuelva a finalizar. Es simétrico a cerrarTorneo.
+     */
+    public void reabrirTorneo(Long torneoId) {
+        List<Pareja> parejas = parejaRepository.findByTorneoId(torneoId);
+        Set<Long> jugadoresVistos = new HashSet<>();
+        Optional<Temporada> temporadaActiva = temporadaRepository.findFirstByActivaTrue();
+
+        for (Pareja pareja : parejas) {
+            for (Jugador jugador : List.of(pareja.getJugador1(), pareja.getJugador2())) {
+                if (jugadoresVistos.contains(jugador.getId())) continue;
+                jugadoresVistos.add(jugador.getId());
+
+                rankingEntryRepository
+                        .findByJugadorIdAndCategoriaIdAndTemporadaIsNull(jugador.getId(), pareja.getCategoria().getId())
+                        .ifPresent(entrada -> {
+                            entrada.setTorneosJugados(Math.max(0, entrada.getTorneosJugados() - 1));
+                            rankingEntryRepository.save(entrada);
+                        });
+
+                temporadaActiva.ifPresent(temporada ->
+                    rankingEntryRepository
+                            .findByJugadorIdAndCategoriaIdAndTemporadaId(jugador.getId(), pareja.getCategoria().getId(), temporada.getId())
+                            .ifPresent(entrada -> {
+                                entrada.setTorneosJugados(Math.max(0, entrada.getTorneosJugados() - 1));
+                                rankingEntryRepository.save(entrada);
+                            })
+                );
+            }
+        }
+    }
+
     public void revertirRankingTorneo(Torneo torneo, List<Partido> partidos, List<Pareja> parejas) {
         if (!torneo.isSumaPuntosRanking()) return;
 
