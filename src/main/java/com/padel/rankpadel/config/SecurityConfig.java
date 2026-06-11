@@ -74,6 +74,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/canchas/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/reservas/disponibilidad").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/reservas").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/reservas/lote").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/torneos/*/inscripciones").permitAll()
                         .requestMatchers("/uploads/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html").permitAll()
