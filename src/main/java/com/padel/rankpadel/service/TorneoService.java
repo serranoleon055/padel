@@ -67,8 +67,6 @@ public class TorneoService {
             EstadoTorneo.INSCRIPCION, List.of(EstadoTorneo.BORRADOR, EstadoTorneo.CANCELADO),
             EstadoTorneo.SORTEADO, List.of(EstadoTorneo.EN_CURSO, EstadoTorneo.CANCELADO),
             EstadoTorneo.EN_CURSO, List.of(EstadoTorneo.FINALIZADO),
-            // FINALIZADO → EN_CURSO permite reabrir un torneo finalizado por error
-            // (p. ej. para cargar partidos de categorías que quedaron sin jugar).
             EstadoTorneo.FINALIZADO, List.of(EstadoTorneo.EN_CURSO),
             EstadoTorneo.CANCELADO, List.of());
 
@@ -151,6 +149,7 @@ public class TorneoService {
         torneoExistente.setAvanzanPorGrupo(torneoRequest.getAvanzanPorGrupo());
         torneoExistente.setIncluyeFaseGrupos(torneoRequest.isIncluyeFaseGrupos());
         torneoExistente.setIncluyeEliminacion(torneoRequest.isIncluyeEliminacion());
+        torneoExistente.setMejorDeSets(torneoRequest.getMejorDeSets() != null ? torneoRequest.getMejorDeSets() : 3);
         torneoExistente.setTipoSorteo(torneoRequest.getTipoSorteo());
         torneoExistente.setCupoMaximoParejas(torneoRequest.getCupoMaximoParejas());
         torneoExistente.setCuposPorCategoria(torneoRequest.getCuposPorCategoria() != null
@@ -210,9 +209,6 @@ public class TorneoService {
             }
         }
 
-        // Reapertura de un torneo finalizado por error (FINALIZADO → EN_CURSO):
-        // deshacemos el cierre de ranking para que el contador de "torneos jugados"
-        // no se duplique cuando el torneo vuelva a finalizarse.
         if (estadoAnterior.equals(EstadoTorneo.FINALIZADO) && nuevoEstado.equals(EstadoTorneo.EN_CURSO)) {
             rankingService.reabrirTorneo(torneoId);
         }
@@ -242,7 +238,6 @@ public class TorneoService {
 
         torneo.setPlantillaFormatoId(plantilla.getId());
         torneo.setPlantillaFormatoNombre(plantilla.getNombre());
-        // Solo aplicamos el formato de la plantilla si el torneo no tiene uno especificado explícitamente
         if (torneo.getFormato() == null) {
             torneo.setFormato(plantilla.getFormatoTorneo());
         }
@@ -251,7 +246,6 @@ public class TorneoService {
         torneo.setCantidadGrupos(plantilla.getCantidadGrupos());
         torneo.setParejasPorGrupo(plantilla.getParejasPorGrupo());
         torneo.setAvanzanPorGrupo(plantilla.getAvanzanPorGrupo());
-        // Para Liga, la eliminatoria siempre es false independientemente de la plantilla
         if (torneo.getFormato() != null && torneo.getFormato().equals(com.padel.rankpadel.enums.FormatoTorneo.LIGA)) {
             torneo.setIncluyeFaseGrupos(true);
             torneo.setIncluyeEliminacion(false);
@@ -331,8 +325,7 @@ public class TorneoService {
 
         for (Grupo grupo : grupos) {
             List<PosicionGrupo> posiciones = com.padel.rankpadel.util.PosicionGrupoOrdenador.ordenar(
-                    posicionGrupoRepository.findByGrupoId(grupo.getId()),
-                    partidoRepository.findByGrupoId(grupo.getId()));
+                    posicionGrupoRepository.findByGrupoId(grupo.getId()));
             List<PosicionGrupoResponse> posResponses = new ArrayList<>();
             int pos = 1;
             for (PosicionGrupo pg : posiciones) {

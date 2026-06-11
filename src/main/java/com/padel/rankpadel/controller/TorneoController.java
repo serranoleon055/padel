@@ -229,6 +229,21 @@ public class TorneoController {
                 return ResponseEntity.ok(resultadoService.cargarResultado(id, idPartido, resultadoRequest));
         }
 
+        @Operation(summary = "Corregir resultado de partido", description = "Requiere JWT. Revierte el resultado anterior (ranking y posiciones) y aplica el nuevo. Solo se permite si el partido todavía no generó la ronda siguiente o el cuadro de la categoría.")
+        @ApiResponses({
+                        @ApiResponse(responseCode = "200", description = "Resultado corregido", content = @Content(schema = @Schema(implementation = PartidoResponse.class))),
+                        @ApiResponse(responseCode = "400", description = "El partido no se puede corregir o el marcador es inválido", content = @Content),
+                        @ApiResponse(responseCode = "404", description = "Partido o torneo no encontrado", content = @Content),
+                        @ApiResponse(responseCode = "401", description = "No autenticado", content = @Content)
+        })
+        @PatchMapping("/{id}/partidos/{idPartido}/resultado")
+        public ResponseEntity<PartidoResponse> corregirResultado(
+                        @Parameter(description = "ID del torneo") @PathVariable Long id,
+                        @Parameter(description = "ID del partido") @PathVariable Long idPartido,
+                        @Valid @RequestBody ResultadoRequest resultadoRequest) {
+                return ResponseEntity.ok(resultadoService.corregirResultado(id, idPartido, resultadoRequest));
+        }
+
         @Operation(summary = "Iniciar partido", description = "Requiere JWT. Marca un partido como EN_CURSO.")
         @PatchMapping("/{id}/partidos/{idPartido}/iniciar")
         public ResponseEntity<PartidoResponse> iniciarPartido(

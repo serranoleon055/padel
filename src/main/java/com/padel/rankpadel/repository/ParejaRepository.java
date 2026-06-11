@@ -24,7 +24,7 @@ public interface ParejaRepository extends JpaRepository<Pareja, Long> {
 
     List<Pareja> findByGrupoId(Long grupoId);
 
-    @Query("SELECT COUNT(p) > 0 FROM Pareja p WHERE p.torneo.id = :torneoId AND (p.jugador1.id = :jugadorId OR p.jugador2.id = :jugadorId)")
-    boolean jugadorYaInscripto(@Param("torneoId") Long torneoId, @Param("jugadorId") Long jugadorId);
+    @Query("SELECT COUNT(p) > 0 FROM Pareja p WHERE p.torneo.id = :torneoId AND p.categoria.id = :categoriaId AND (p.jugador1.id = :jugadorId OR p.jugador2.id = :jugadorId)")
+    boolean jugadorYaInscriptoEnCategoria(@Param("torneoId") Long torneoId, @Param("categoriaId") Long categoriaId, @Param("jugadorId") Long jugadorId);
 
 }

@@ -26,7 +26,6 @@ public class JwtUtil {
         return Keys.hmacShaKeyFor(Decoders.BASE64.decode(secret));
     }
 
-    /** Rol por defecto: hoy todos los usuarios autenticados son administradores. */
     public static final String DEFAULT_ROLE = "ROLE_ADMIN";
 
     public String generateToken(String username) {
@@ -39,7 +38,6 @@ public class JwtUtil {
                 .compact();
     }
 
-    /** Devuelve el rol del token, o el rol por defecto si no viniera (tokens antiguos). */
     public String extractRole(String token) {
         Object role = extractAllClaims(token).get("role");
         return role != null ? role.toString() : DEFAULT_ROLE;

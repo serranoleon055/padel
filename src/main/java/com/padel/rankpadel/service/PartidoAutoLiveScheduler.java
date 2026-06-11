@@ -13,17 +13,12 @@ import com.padel.rankpadel.repository.PartidoRepository;
 
 import lombok.RequiredArgsConstructor;
 
-/**
- * Pasa automáticamente a EN_CURSO los partidos cuya fecha/hora programada ya llegó, siempre que el
- * torneo esté iniciado. El partido queda "en vivo" hasta que se cargue el resultado o se declare W.O.
- */
 @Component
 @RequiredArgsConstructor
 public class PartidoAutoLiveScheduler {
 
     private final PartidoRepository partidoRepository;
 
-    /** Se ejecuta cada minuto. */
     @Scheduled(fixedRate = 60_000)
     @Transactional
     public void iniciarPartidosProgramados() {

@@ -34,6 +34,7 @@ public class PartidoService {
     private final CanchaRepository canchaRepository;
     private final ParejaRepository parejaRepository;
     private final ResultadoService resultadoService;
+    private final DisponibilidadCanchaService disponibilidadCanchaService;
 
     @Transactional(readOnly = true)
     public List<PartidoResponse> listarPorTorneo(Long torneoId) {
@@ -114,23 +115,23 @@ public class PartidoService {
             throw new EstadoInvalidoException("No se puede programar un partido ya finalizado");
         }
 
-        partido.setFechaHoraProgramada(request.getFechaHora());
-
         if (request.getCanchaId() != null) {
             Cancha cancha = canchaRepository.findById(request.getCanchaId())
                     .orElseThrow(() -> new ResourceNotFoundException("Cancha", request.getCanchaId()));
+            if (request.getFechaHora() != null
+                    && !disponibilidadCanchaService.canchaLibreParaPartido(cancha.getId(), request.getFechaHora(), partidoId)) {
+                throw new EstadoInvalidoException(
+                        "La cancha ya está ocupada en ese horario (otro partido, una reserva o un bloqueo)");
+            }
             partido.setCancha(cancha);
         }
+
+        partido.setFechaHoraProgramada(request.getFechaHora());
 
         partidoRepository.save(partido);
         return partidoMapper.partidoToResponse(partido);
     }
 
-    /**
-     * Declara un walkover o retiro.
-     * - WALKOVER (W.O.): la pareja no se presentó antes del partido. No se otorgan puntos.
-     * - RETIRO: una pareja abandonó durante el partido. El ganador recibe puntos normales.
-     */
     @Transactional
     public PartidoResponse declararWalkoverORetiro(Long torneoId, Long partidoId, WalkoverRequest request) {
         Partido partido = partidoRepository.findById(partidoId)
@@ -174,7 +175,6 @@ public class PartidoService {
         partido.setEstado(nuevoEstado);
         partidoRepository.save(partido);
 
-        // El RETIRO sí otorga puntos (el rival abandonó en juego); el WALKOVER no
         if (nuevoEstado == EstadoPartido.RETIRO) {
             resultadoService.actualizarRankingWO(partido);
         }

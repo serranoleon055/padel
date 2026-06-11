@@ -18,10 +18,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiError> handleGeneral(Exception ex) {
-        // El detalle completo (incluido el stacktrace) va al log del servidor.
         log.error("Error inesperado: {}", ex.getMessage(), ex);
-        // Al cliente solo un mensaje genérico: no exponemos internals (clases,
-        // mensajes de excepción, SQL, etc.) que faciliten un ataque.
         ApiError apiError = ApiError.builder()
                 .status(500)
                 .error("Internal Server Error")

@@ -19,6 +19,8 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.padel.rankpadel.dto.request.BatchDeleteRequest;
 import com.padel.rankpadel.dto.request.JugadorRequest;
+import com.padel.rankpadel.dto.response.JugadorBusquedaResponse;
+import com.padel.rankpadel.dto.response.JugadorFichaResponse;
 import com.padel.rankpadel.dto.response.JugadorHistorialResponse;
 import com.padel.rankpadel.dto.response.JugadorResponse;
 import com.padel.rankpadel.dto.response.PagedResponse;
@@ -66,6 +68,20 @@ public class JugadorController {
     public ResponseEntity<JugadorHistorialResponse> historial(
             @Parameter(description = "ID del jugador") @PathVariable Long id) {
         return ResponseEntity.ok(jugadorService.obtenerHistorial(id));
+    }
+
+    @SecurityRequirements({})
+    @Operation(summary = "Buscar jugadores por nombre (autocompletado público para inscripciones)")
+    @GetMapping("/buscar")
+    public ResponseEntity<List<JugadorBusquedaResponse>> buscar(@RequestParam String q) {
+        return ResponseEntity.ok(jugadorService.buscar(q));
+    }
+
+    @Operation(summary = "Ficha admin del jugador (datos sensibles: fecha de nacimiento y teléfono). Requiere JWT.")
+    @GetMapping("/{id}/ficha")
+    public ResponseEntity<JugadorFichaResponse> ficha(
+            @Parameter(description = "ID del jugador") @PathVariable Long id) {
+        return ResponseEntity.ok(jugadorService.obtenerFicha(id));
     }
 
     @SecurityRequirements({})

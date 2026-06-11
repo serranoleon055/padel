@@ -125,6 +125,27 @@ class RankingServiceTest {
 
             assertThat(resultado).isEmpty();
         }
+
+        @Test
+        @DisplayName("Empate en puntos: ordena por más victorias primero (desempate determinístico)")
+        void obtenerRanking_empatePuntos_ordenaPorVictorias() {
+            RankingEntry menosVictorias = RankingEntry.builder()
+                    .id(1L).jugador(jugador1).categoria(categoriaMasculina)
+                    .puntosTotales(200).victorias(3).derrotas(5)
+                    .posicionActual(1).posicionAnterior(1).build();
+            RankingEntry masVictorias = RankingEntry.builder()
+                    .id(2L).jugador(jugador2).categoria(categoriaMasculina)
+                    .puntosTotales(200).victorias(7).derrotas(1)
+                    .posicionActual(2).posicionAnterior(2).build();
+
+            when(rankingEntryRepository.findByTemporadaIsNull())
+                    .thenReturn(new ArrayList<>(List.of(menosVictorias, masVictorias)));
+
+            List<RankingResponse> resultado = rankingService.obtenerRanking(null, null);
+
+            assertThat(resultado.get(0).getJugadorNombre()).isEqualTo("Pedro López");
+            assertThat(resultado.get(1).getJugadorNombre()).isEqualTo("Carlos García");
+        }
     }
 
     @Nested

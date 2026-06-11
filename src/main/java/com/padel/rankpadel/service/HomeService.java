@@ -4,7 +4,9 @@ import java.time.LocalDate;
 import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,6 +18,7 @@ import com.padel.rankpadel.dto.response.PartidoResponse;
 import com.padel.rankpadel.dto.response.RankingResponse;
 import com.padel.rankpadel.dto.response.TemporadaResponse;
 import com.padel.rankpadel.dto.response.TorneoResponse;
+import com.padel.rankpadel.entity.Categoria;
 import com.padel.rankpadel.entity.Partido;
 import com.padel.rankpadel.entity.Temporada;
 import com.padel.rankpadel.entity.Torneo;
@@ -186,7 +189,20 @@ public class HomeService {
         response.setPartidosFinalizados(partidoRepository.countByTorneoIdAndEstado(
                 torneo.getId(),
                 EstadoPartido.FINALIZADO));
+        response.setParejasPorCategoria(contarParejasPorCategoria(torneo));
         return response;
+    }
+
+    private Map<Long, Long> contarParejasPorCategoria(Torneo torneo) {
+        Map<Long, Long> conteos = new HashMap<>();
+        if (torneo.getCategorias() == null) {
+            return conteos;
+        }
+        for (Categoria categoria : torneo.getCategorias()) {
+            conteos.put(categoria.getId(),
+                    parejaRepository.countByTorneoIdAndCategoriaId(torneo.getId(), categoria.getId()));
+        }
+        return conteos;
     }
 
     private boolean esTorneoVisibleComoProximo(Torneo torneo) {

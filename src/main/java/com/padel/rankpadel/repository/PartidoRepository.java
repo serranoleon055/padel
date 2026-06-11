@@ -23,7 +23,6 @@ public interface PartidoRepository extends JpaRepository<Partido, Long> {
 
     List<Partido> findByRondaId(Long rondaId);
 
-    /** Partidos de la ronda en orden de llave, para preservar el lado del cuadro al avanzar. */
     List<Partido> findByRondaIdOrderByOrdenLlaveAscIdAsc(Long rondaId);
 
     List<Partido> findByRondaIdAndEstado(Long rondaId, EstadoPartido estado);
@@ -38,6 +37,8 @@ public interface PartidoRepository extends JpaRepository<Partido, Long> {
 
     long countByTorneoIdAndEstado(Long torneoId, EstadoPartido estado);
 
+    List<Partido> findByCanchaIdAndFechaHoraProgramadaBetween(Long canchaId, java.time.LocalDateTime desde, java.time.LocalDateTime hasta);
+
     @Query("""
         SELECT p FROM Partido p
         WHERE p.estado = :estado
@@ -47,7 +48,6 @@ public interface PartidoRepository extends JpaRepository<Partido, Long> {
         """)
     List<Partido> findTop10ByEstadoOrderByFechaHoraDescIdDesc(@Param("estado") EstadoPartido estado);
 
-    /** Partidos con fecha programada, para la vista de calendario del torneo. */
     @Query("""
         SELECT p FROM Partido p
         WHERE p.torneo.id = :torneoId
@@ -57,7 +57,6 @@ public interface PartidoRepository extends JpaRepository<Partido, Long> {
         """)
     List<Partido> findCalendarioPorTorneo(@Param("torneoId") Long torneoId);
 
-    /** Partidos pendientes cuya hora programada ya llegó, en torneos iniciados (para auto "en vivo"). */
     @Query("""
         SELECT p FROM Partido p
         WHERE p.estado = 'PENDIENTE'
@@ -68,7 +67,6 @@ public interface PartidoRepository extends JpaRepository<Partido, Long> {
         """)
     List<Partido> findParaIniciarAutomatico(@Param("ahora") java.time.LocalDateTime ahora);
 
-    /** Próximos partidos programados en todos los torneos activos. */
     @Query("""
         SELECT p FROM Partido p
         WHERE p.fechaHoraProgramada >= :desde
@@ -78,7 +76,6 @@ public interface PartidoRepository extends JpaRepository<Partido, Long> {
         """)
     List<Partido> findProximos(@Param("desde") java.time.LocalDateTime desde);
 
-    /** Últimas finales jugadas (para la sección de campeones del Home). */
     @Query("""
         SELECT p FROM Partido p
         WHERE p.estado = 'FINALIZADO'
@@ -90,7 +87,6 @@ public interface PartidoRepository extends JpaRepository<Partido, Long> {
         """)
     List<Partido> findUltimasFinales();
 
-    /** Todos los partidos finalizados en los que participó un jugador (como local o visitante), excluyendo torneos inactivos. */
     @Query("""
         SELECT p FROM Partido p
         WHERE (p.estado = 'FINALIZADO' OR p.estado = 'WALKOVER' OR p.estado = 'RETIRO')

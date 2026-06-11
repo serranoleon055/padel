@@ -36,4 +36,7 @@ public class Categoria {
     @Enumerated(EnumType.STRING)
     private Genero genero;
 
+    @Builder.Default
+    private boolean archivado = false;
+
 }

@@ -16,14 +16,6 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
-/**
- * Limita la cantidad de intentos de login por IP para mitigar ataques de
- * fuerza bruta sobre {@code POST /auth/login}.
- *
- * <p>Usa una ventana fija en memoria (sin dependencias externas). Para un
- * despliegue con múltiples instancias conviene migrar a un store compartido
- * (Redis) o a bucket4j; para un MVP de instancia única es suficiente.
- */
 @Component
 public class LoginRateLimitFilter extends OncePerRequestFilter {
 
@@ -67,7 +59,6 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
                 && LOGIN_PATH.equals(request.getServletPath());
     }
 
-    /** Devuelve true si la IP superó el máximo de intentos en la ventana actual. */
     private boolean superaLimite(String ip) {
         long ahora = System.currentTimeMillis();
         long ventanaMs = windowSeconds * 1000L;
@@ -85,7 +76,6 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
     private String clientIp(HttpServletRequest request) {
         String forwarded = request.getHeader("X-Forwarded-For");
         if (forwarded != null && !forwarded.isBlank()) {
-            // El primer valor es la IP del cliente original.
             return forwarded.split(",")[0].trim();
         }
         return request.getRemoteAddr();

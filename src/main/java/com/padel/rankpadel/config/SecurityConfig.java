@@ -16,6 +16,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -30,11 +31,6 @@ public class SecurityConfig {
     private final JwtFilter jwtFilter;
     private final LoginRateLimitFilter loginRateLimitFilter;
 
-    /**
-     * Orígenes permitidos para CORS, separados por coma. En producción se setea
-     * vía la variable de entorno APP_CORS_ALLOWED_ORIGINS con el dominio real
-     * del frontend. El default cubre el desarrollo local (Vite/CRA).
-     */
     @Value("${app.cors.allowed-origins:http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000}")
     private String allowedOrigins;
 
@@ -51,12 +47,20 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .headers(headers -> headers
+                        .frameOptions(frame -> frame.deny())
+                        .contentTypeOptions(contentType -> {
+                        })
+                        .httpStrictTransportSecurity(hsts -> hsts
+                                .includeSubDomains(true)
+                                .maxAgeInSeconds(31536000))
+                        .referrerPolicy(referrer -> referrer
+                                .policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN)))
                 .authorizeHttpRequests(auth -> auth
-                        // Rutas públicas — cualquiera puede acceder
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        // Healthcheck de Railway/monitoreo (sin auth)
                         .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/auth/login").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/jugadores/*/ficha").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/jugadores/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/categorias/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/torneos/**").permitAll()
@@ -68,19 +72,17 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/plantillas-puntos/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/ranking/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/canchas/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/reservas/disponibilidad").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/reservas").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/torneos/*/inscripciones").permitAll()
                         .requestMatchers("/uploads/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/v3/api-docs.yaml").permitAll()
-                        // Lo demas requiere ser administrador
                         .anyRequest().hasRole("ADMIN"))
-                // Devolver 401 (no 403) cuando no hay token o expiró, para que el
-                // frontend limpie la sesión y redirija al login.
                 .exceptionHandling(ex -> ex.authenticationEntryPoint(
                         (request, response, authException) -> response.sendError(
                                 HttpStatus.UNAUTHORIZED.value(), "No autenticado")))
-                // Rate limiting de login antes que nada (mitiga fuerza bruta)
                 .addFilterBefore(loginRateLimitFilter, UsernamePasswordAuthenticationFilter.class)
-                // Registrar el JwtFilter antes del filtro de autenticación de Spring
                 .addFilterBefore(jwtFilter, LoginRateLimitFilter.class);
 
         return http.build();

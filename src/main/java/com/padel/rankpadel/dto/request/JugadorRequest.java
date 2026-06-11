@@ -1,5 +1,7 @@
 package com.padel.rankpadel.dto.request;
 
+import java.time.LocalDate;
+
 import com.padel.rankpadel.enums.Genero;
 
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -36,4 +38,10 @@ public class JugadorRequest {
 
     @Schema(description = "ID de la categoría asignada (opcional)", example = "1")
     private Long categoriaId;
+
+    @Schema(description = "Teléfono de contacto (opcional)")
+    private String telefono;
+
+    @Schema(description = "Fecha de nacimiento (opcional)")
+    private LocalDate fechaNacimiento;
 }
