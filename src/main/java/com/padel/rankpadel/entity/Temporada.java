@@ -31,4 +31,7 @@ public class Temporada {
     private LocalDate fechaFin;
     private boolean activa;
 
+    @Builder.Default
+    private boolean archivado = false;
+
 }

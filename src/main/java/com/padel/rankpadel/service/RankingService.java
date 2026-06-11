@@ -41,6 +41,12 @@ public class RankingService {
     private final ParejaRepository parejaRepository;
     private final TemporadaRepository temporadaRepository;
 
+    private static final Comparator<RankingEntry> ORDEN_RANKING =
+            Comparator.comparingInt(RankingEntry::getPuntosTotales).reversed()
+                    .thenComparing(Comparator.comparingInt(RankingEntry::getVictorias).reversed())
+                    .thenComparingInt(RankingEntry::getDerrotas)
+                    .thenComparingLong(RankingService::idJugador);
+
     public void actualizarRanking(Partido partido) {
 
         if (!partido.getTorneo().isSumaPuntosRanking())
@@ -61,7 +67,6 @@ public class RankingService {
                 ? partido.getVisitante()
                 : partido.getLocal();
 
-        // Temporada activa: si existe, los puntos se registran también en ella
         Optional<Temporada> temporadaActiva = temporadaRepository.findFirstByActivaTrue();
 
         asignarPuntos(ganador.getJugador1(), ganador.getCategoria(), partido.getTorneo(), puntosGanador, true, null);
@@ -80,11 +85,6 @@ public class RankingService {
         recalcularPosiciones(ganador.getCategoria(), null);
     }
 
-    /**
-     * Devuelve el ranking.
-     * Si hay una temporada activa, por defecto muestra el ranking de esa temporada.
-     * Para forzar el ranking global se puede pasar temporadaId = -1L (sentinela).
-     */
     public List<RankingResponse> obtenerRanking(Long categoriaId, Genero genero) {
         Optional<Temporada> temporadaActiva = temporadaRepository.findFirstByActivaTrue();
 
@@ -100,7 +100,6 @@ public class RankingService {
                 entradas = rankingEntryRepository.findByTemporadaId(temporadaId);
             }
         } else {
-            // Sin temporada activa: ranking global acumulado
             if (categoriaId != null) {
                 entradas = rankingEntryRepository.findByCategoriaIdAndTemporadaIsNull(categoriaId);
             } else if (genero != null) {
@@ -110,8 +109,6 @@ public class RankingService {
             }
         }
 
-        // Si la temporada activa no tiene entradas todavía, mostramos el ranking global
-        // para no romper la experiencia antes de que se jueguen torneos en la nueva temporada
         if (entradas.isEmpty() && temporadaActiva.isPresent()) {
             if (categoriaId != null) {
                 entradas = rankingEntryRepository.findByCategoriaIdAndTemporadaIsNull(categoriaId);
@@ -122,7 +119,7 @@ public class RankingService {
             }
         }
 
-        entradas.sort(Comparator.comparingInt(RankingEntry::getPuntosTotales).reversed());
+        entradas.sort(ORDEN_RANKING);
 
         List<RankingResponse> respuestas = new ArrayList<>();
         for (RankingEntry e : entradas) {
@@ -193,7 +190,6 @@ public class RankingService {
                 if (jugadoresVistos.contains(jugador.getId())) continue;
                 jugadoresVistos.add(jugador.getId());
 
-                // Incrementar torneos jugados en entrada global
                 rankingEntryRepository
                         .findByJugadorIdAndCategoriaIdAndTemporadaIsNull(jugador.getId(), pareja.getCategoria().getId())
                         .ifPresent(entrada -> {
@@ -201,7 +197,6 @@ public class RankingService {
                             rankingEntryRepository.save(entrada);
                         });
 
-                // Incrementar torneos jugados en entrada de temporada activa
                 temporadaActiva.ifPresent(temporada ->
                     rankingEntryRepository
                             .findByJugadorIdAndCategoriaIdAndTemporadaId(jugador.getId(), pareja.getCategoria().getId(), temporada.getId())
@@ -214,11 +209,6 @@ public class RankingService {
         }
     }
 
-    /**
-     * Reapertura de un torneo previamente finalizado: deshace el incremento de
-     * "torneos jugados" que aplicó {@link #cerrarTorneo}, para que no se duplique
-     * cuando el torneo se vuelva a finalizar. Es simétrico a cerrarTorneo.
-     */
     public void reabrirTorneo(Long torneoId) {
         List<Pareja> parejas = parejaRepository.findByTorneoId(torneoId);
         Set<Long> jugadoresVistos = new HashSet<>();
@@ -246,6 +236,47 @@ public class RankingService {
                 );
             }
         }
+    }
+
+    public void revertirRankingPartido(Partido partido) {
+        if (!partido.getTorneo().isSumaPuntosRanking()) return;
+        if (partido.getGanador() == null) return;
+
+        String nombreRonda = FasePartido.GRUPOS.equals(partido.getFase())
+                ? "Grupos"
+                : partido.getRonda().getNombre();
+
+        Optional<ConfiguracionPuntos> config = configuracionPuntosRepository
+                .findByTorneoIdAndNombreRonda(partido.getTorneo().getId(), nombreRonda);
+
+        int puntosGanador = config.map(ConfiguracionPuntos::getPuntosGanador).orElse(0);
+        int puntosPerdedor = config.map(ConfiguracionPuntos::getPuntosPerdedor).orElse(0);
+
+        Pareja ganador = partido.getGanador();
+        Pareja perdedor = ganador.getId().equals(partido.getLocal().getId())
+                ? partido.getVisitante()
+                : partido.getLocal();
+
+        Optional<Temporada> temporadaActiva = temporadaRepository.findFirstByActivaTrue();
+
+        restarPuntos(ganador.getJugador1(), ganador.getCategoria(), puntosGanador, true, null);
+        restarPuntos(ganador.getJugador2(), ganador.getCategoria(), puntosGanador, true, null);
+        restarPuntos(perdedor.getJugador1(), perdedor.getCategoria(), puntosPerdedor, false, null);
+        restarPuntos(perdedor.getJugador2(), perdedor.getCategoria(), puntosPerdedor, false, null);
+
+        final int pG = puntosGanador;
+        final int pP = puntosPerdedor;
+        final Pareja g = ganador;
+        final Pareja p = perdedor;
+        temporadaActiva.ifPresent(temporada -> {
+            restarPuntos(g.getJugador1(), g.getCategoria(), pG, true, temporada);
+            restarPuntos(g.getJugador2(), g.getCategoria(), pG, true, temporada);
+            restarPuntos(p.getJugador1(), p.getCategoria(), pP, false, temporada);
+            restarPuntos(p.getJugador2(), p.getCategoria(), pP, false, temporada);
+            recalcularPosiciones(g.getCategoria(), temporada);
+        });
+
+        recalcularPosiciones(ganador.getCategoria(), null);
     }
 
     public void revertirRankingTorneo(Torneo torneo, List<Partido> partidos, List<Pareja> parejas) {
@@ -342,7 +373,7 @@ public class RankingService {
             entradas = rankingEntryRepository.findByCategoriaIdAndTemporadaId(categoria.getId(), temporada.getId());
         }
 
-        entradas.sort(Comparator.comparingInt(RankingEntry::getPuntosTotales).reversed());
+        entradas.sort(ORDEN_RANKING);
 
         for (int i = 0; i < entradas.size(); i++) {
             RankingEntry entrada = entradas.get(i);
@@ -364,6 +395,18 @@ public class RankingService {
         int diferencia = entrada.getPosicionAnterior() - entrada.getPosicionActual();
         if (diferencia == 0) return "-";
         return diferencia > 0 ? "+" + diferencia : String.valueOf(diferencia);
+    }
+
+    private static long idJugador(RankingEntry entrada) {
+        try {
+            Jugador jugador = entrada.getJugador();
+            if (jugador == null || jugador.getId() == null) {
+                return Long.MAX_VALUE;
+            }
+            return jugador.getId();
+        } catch (EntityNotFoundException e) {
+            return Long.MAX_VALUE;
+        }
     }
 
     private Jugador obtenerJugadorActivo(RankingEntry entrada) {

@@ -12,10 +12,10 @@ import com.padel.rankpadel.enums.Genero;
 @Repository
 public interface CategoriaRepository extends JpaRepository<Categoria, Long> {
 
-    // Filtrar por genero
     List<Categoria> findByGenero(Genero genero);
 
-    // Verifica si una categoría ya existe antes de crearla
     Optional<Categoria> findByNombreAndGenero(String nombre, Genero genero);
+
+    List<Categoria> findByArchivadoFalse();
 
 }

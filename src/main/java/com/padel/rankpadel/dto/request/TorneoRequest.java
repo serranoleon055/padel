@@ -31,7 +31,6 @@ public class TorneoRequest {
     private String imagenUrl;
     private Integer cupoMaximoParejas;
 
-    /** Cupo máximo de parejas por categoría: categoriaId → cupo. */
     @Builder.Default
     private Map<Long, Integer> cuposPorCategoria = new HashMap<>();
 
@@ -61,6 +60,9 @@ public class TorneoRequest {
     private boolean incluyeFaseGrupos;
 
     private boolean incluyeEliminacion;
+
+    @Builder.Default
+    private Integer mejorDeSets = 3;
 
     @NotNull
     private TipoSorteo tipoSorteo;

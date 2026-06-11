@@ -17,13 +17,10 @@ public class JugadorHistorialResponse {
 
     private JugadorResponse jugador;
 
-    /** Posiciones actuales en el ranking por categoría */
     private List<RankingResponse> ranking;
 
-    /** Partidos jugados por este jugador, ordenados por fecha desc */
     private List<PartidoResponse> partidos;
 
-    /** Torneos en los que participó, con su resultado final */
     private List<TorneoHistorialItem> torneos;
 
     @Getter

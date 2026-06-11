@@ -27,6 +27,7 @@ public class TorneoResponse {
     private String imagenUrl;
     private Integer cupoMaximoParejas;
     private Map<Long, Integer> cuposPorCategoria;
+    private Map<Long, Long> parejasPorCategoria;
     private FormatoTorneo formato;
     private EstadoTorneo estado;
     private LocalDate fechaInicio;
@@ -43,6 +44,7 @@ public class TorneoResponse {
     private Integer avanzanPorGrupo;
     private boolean incluyeFaseGrupos;
     private boolean incluyeEliminacion;
+    private Integer mejorDeSets;
     private TipoSorteo tipoSorteo;
     private Long temporadaId;
     private String temporadaNombre;

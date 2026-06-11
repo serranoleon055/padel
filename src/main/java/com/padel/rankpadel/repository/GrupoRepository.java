@@ -10,10 +10,8 @@ import com.padel.rankpadel.entity.Grupo;
 @Repository
 public interface GrupoRepository extends JpaRepository<Grupo, Long> {
 
-    // Filtra por torneoid
     List<Grupo> findByTorneoId(Long torneoId);
 
-    // Filtra por torneoid y cateogoriaid
     List<Grupo> findByTorneoIdAndCategoriaId(Long torneoId, Long categoriaId);
 
 }

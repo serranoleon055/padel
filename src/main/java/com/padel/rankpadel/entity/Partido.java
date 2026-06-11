@@ -45,7 +45,6 @@ public class Partido {
     private LocalDateTime fechaHora;
     private LocalDateTime fechaHoraProgramada;
 
-    /** Posición del partido dentro de la ronda eliminatoria (para preservar el lado del cuadro). */
     private Integer ordenLlave;
 
     @ManyToOne(fetch = FetchType.LAZY)

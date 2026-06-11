@@ -18,6 +18,8 @@ public class JugadorMapper {
                 .apellido(jugadorRequest.getApellido())
                 .genero(jugadorRequest.getGenero())
                 .fotoUrl(jugadorRequest.getFotoUrl())
+                .telefono(jugadorRequest.getTelefono())
+                .fechaNacimiento(jugadorRequest.getFechaNacimiento())
                 .fechaRegistro(LocalDate.now())
                 .categoria(categoria)
                 .build();

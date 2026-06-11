@@ -19,6 +19,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.padel.rankpadel.dto.request.ResultadoRequest;
+import com.padel.rankpadel.entity.Categoria;
 import com.padel.rankpadel.entity.Pareja;
 import com.padel.rankpadel.entity.Partido;
 import com.padel.rankpadel.entity.RondaEliminatorias;
@@ -203,6 +204,30 @@ class ResultadoServiceTest {
         }
 
         @Test
+        @DisplayName("Marcador de un solo set no es un partido completo")
+        void determinarGanador_unSoloSet_lanzaExcepcion() {
+            when(partidoRepository.findById(100L)).thenReturn(Optional.of(partidoPendiente));
+
+            assertThrows(EstadoInvalidoException.class,
+                    () -> resultadoService.cargarResultado(1L, 100L,
+                            new ResultadoRequest("6-3")));
+
+            verify(partidoRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("No puede haber un tercer set si el partido ya estaba 2-0")
+        void determinarGanador_tercerSetInnecesario_lanzaExcepcion() {
+            when(partidoRepository.findById(100L)).thenReturn(Optional.of(partidoPendiente));
+
+            assertThrows(EstadoInvalidoException.class,
+                    () -> resultadoService.cargarResultado(1L, 100L,
+                            new ResultadoRequest("6-1 / 6-2 / 6-3")));
+
+            verify(partidoRepository, never()).save(any());
+        }
+
+        @Test
         @DisplayName("Partido con ronda que cierra bracket finaliza el torneo")
         void cargarResultado_ultimoPartidoRonda_finalizaTorneo() {
             when(partidoRepository.findById(100L)).thenReturn(Optional.of(partidoPendiente));
@@ -240,6 +265,89 @@ class ResultadoServiceTest {
             // El torneo NO debe finalizarse ni cerrarse el ranking todavía.
             verify(torneoRepository, never()).save(any(Torneo.class));
             verify(rankingService, never()).cerrarTorneo(any());
+        }
+    }
+
+    @Nested
+    @DisplayName("determinarGanador() - torneo a 1 set")
+    class FormatoUnSetTests {
+
+        private Partido partidoUnSet() {
+            Torneo torneoUnSet = Torneo.builder()
+                    .id(1L).nombre("Minitorneo")
+                    .estado(EstadoTorneo.EN_CURSO).sumaPuntosRanking(false)
+                    .mejorDeSets(1)
+                    .build();
+            return Partido.builder()
+                    .id(100L).torneo(torneoUnSet)
+                    .local(parejaLocal).visitante(parejaVisitante)
+                    .estado(EstadoPartido.PENDIENTE)
+                    .fase(FasePartido.ELIMINACION).ronda(rondaTest)
+                    .build();
+        }
+
+        @Test
+        @DisplayName("Un único set define el partido")
+        void determinarGanador_unSet_guardaPartido() {
+            when(partidoRepository.findById(100L)).thenReturn(Optional.of(partidoUnSet()));
+            when(partidoMapper.partidoToResponse(any())).thenReturn(
+                    com.padel.rankpadel.dto.response.PartidoResponse.builder().id(100L).marcador("6-3").build());
+
+            resultadoService.cargarResultado(1L, 100L, new ResultadoRequest("6-3"));
+
+            verify(partidoRepository).save(any(Partido.class));
+        }
+
+        @Test
+        @DisplayName("Cargar 2 sets en un torneo a 1 set es inválido")
+        void determinarGanador_dosSetsEnTorneoUnSet_lanzaExcepcion() {
+            when(partidoRepository.findById(100L)).thenReturn(Optional.of(partidoUnSet()));
+
+            assertThrows(EstadoInvalidoException.class,
+                    () -> resultadoService.cargarResultado(1L, 100L, new ResultadoRequest("6-3 / 6-4")));
+
+            verify(partidoRepository, never()).save(any());
+        }
+    }
+
+    @Nested
+    @DisplayName("corregirResultado() - guardas de seguridad")
+    class CorregirResultadoTests {
+
+        @Test
+        @DisplayName("Un partido no FINALIZADO no se puede corregir")
+        void corregir_partidoNoFinalizado_lanzaExcepcion() {
+            when(partidoRepository.findById(100L)).thenReturn(Optional.of(partidoPendiente));
+
+            assertThrows(EstadoInvalidoException.class,
+                    () -> resultadoService.corregirResultado(1L, 100L, new ResultadoRequest("6-3 / 6-4")));
+
+            verify(partidoRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Si ya se generó la ronda siguiente, no permite corregir")
+        void corregir_conRondaPosterior_lanzaExcepcion() {
+            Categoria categoria = Categoria.builder().id(3L).build();
+            RondaEliminatorias rondaActual = RondaEliminatorias.builder()
+                    .id(5L).orden(1).torneo(torneo).categoria(categoria).build();
+            Partido finalizado = Partido.builder()
+                    .id(100L).torneo(torneo)
+                    .local(parejaLocal).visitante(parejaVisitante)
+                    .estado(EstadoPartido.FINALIZADO).fase(FasePartido.ELIMINACION)
+                    .ronda(rondaActual).marcador("6-3 / 6-4").ganador(parejaLocal)
+                    .build();
+            RondaEliminatorias rondaPosterior = RondaEliminatorias.builder()
+                    .id(6L).orden(2).categoria(categoria).build();
+
+            when(partidoRepository.findById(100L)).thenReturn(Optional.of(finalizado));
+            when(rondaEliminatoriasRepository.findByTorneoIdAndCategoriaIdOrderByOrden(1L, 3L))
+                    .thenReturn(List.of(rondaActual, rondaPosterior));
+
+            assertThrows(EstadoInvalidoException.class,
+                    () -> resultadoService.corregirResultado(1L, 100L, new ResultadoRequest("6-4 / 6-2")));
+
+            verify(partidoRepository, never()).save(any());
         }
     }
 }

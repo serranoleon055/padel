@@ -34,7 +34,6 @@ public class ImageStorageService {
     @Value("${app.upload.public-base-url:/uploads}")
     private String publicBaseUrl;
 
-    // Cloudinary (opcional). Si cloud-name está definido, se usa Cloudinary en lugar del disco.
     @Value("${app.cloudinary.cloud-name:}")
     private String cloudName;
 
@@ -103,7 +102,6 @@ public class ImageStorageService {
         return secureUrl.toString();
     }
 
-    /** Borra la imagen asociada a una URL pública previamente generada (Cloudinary o disco). Best-effort. */
     public void borrarPorUrl(String url) {
         if (url == null) return;
 
@@ -122,7 +120,6 @@ public class ImageStorageService {
                 Files.deleteIfExists(target);
             }
         } catch (IOException ignored) {
-            // Borrado best-effort: si el archivo no se puede eliminar, no interrumpimos la operación.
         }
     }
 
@@ -133,22 +130,16 @@ public class ImageStorageService {
                 getCloudinary().uploader().destroy(publicId, ObjectUtils.asMap("resource_type", "image"));
             }
         } catch (Exception ignored) {
-            // Best-effort: no interrumpimos la operación si el borrado remoto falla.
         }
     }
 
-    /**
-     * Extrae el public_id de una URL de Cloudinary.
-     * Ej: https://res.cloudinary.com/demo/image/upload/v123/rankpadel/jugadores/x.jpg
-     *     -> rankpadel/jugadores/x
-     */
     private String extraerPublicId(String url) {
         int idx = url.indexOf("/upload/");
         if (idx < 0) return null;
         String resto = url.substring(idx + "/upload/".length());
-        resto = resto.replaceFirst("^v\\d+/", ""); // quitar versión
+        resto = resto.replaceFirst("^v\\d+/", "");
         int punto = resto.lastIndexOf('.');
-        if (punto > 0) resto = resto.substring(0, punto); // quitar extensión
+        if (punto > 0) resto = resto.substring(0, punto);
         return resto;
     }
 
@@ -181,13 +172,11 @@ public class ImageStorageService {
         if (!ALLOWED_TYPES.contains(file.getContentType())) {
             throw new EstadoInvalidoException("La imagen debe ser JPG o PNG");
         }
-        // El Content-Type es falsificable: validamos también la cabecera real del archivo.
         if (!esJpegOPng(file)) {
             throw new EstadoInvalidoException("El archivo no es una imagen JPG o PNG válida");
         }
     }
 
-    /** Verifica los magic bytes: JPEG (FF D8 FF) o PNG (89 50 4E 47 0D 0A 1A 0A). */
     private boolean esJpegOPng(MultipartFile file) {
         try {
             byte[] head = new byte[8];

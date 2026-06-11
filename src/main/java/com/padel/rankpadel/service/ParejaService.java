@@ -59,7 +59,6 @@ public class ParejaService {
                     "La categoría no está activa en este torneo");
         }
 
-        // Cupo por categoría (si está definido); si no, se usa el cupo total como compatibilidad.
         Integer cupoCategoria = torneo.getCuposPorCategoria() != null
                 ? torneo.getCuposPorCategoria().get(categoria.getId())
                 : null;
@@ -88,11 +87,11 @@ public class ParejaService {
 
         validarGeneroPareja(jugador1, jugador2, categoria, torneo.isEsMixto());
 
-        if (parejaRepository.jugadorYaInscripto(torneoId, jugador1.getId())) {
-            throw new EstadoInvalidoException("El jugador 1 ya esta inscripto en este torneo");
+        if (parejaRepository.jugadorYaInscriptoEnCategoria(torneoId, categoria.getId(), jugador1.getId())) {
+            throw new EstadoInvalidoException("El jugador 1 ya está inscripto en esta categoría");
         }
-        if (parejaRepository.jugadorYaInscripto(torneoId, jugador2.getId())) {
-            throw new EstadoInvalidoException("El jugador 2 ya esta inscripto en este torneo");
+        if (parejaRepository.jugadorYaInscriptoEnCategoria(torneoId, categoria.getId(), jugador2.getId())) {
+            throw new EstadoInvalidoException("El jugador 2 ya está inscripto en esta categoría");
         }
 
         Pareja pareja = parejaMapper.requestToPareja(request, jugador1, jugador2, categoria, torneo);
@@ -102,10 +101,6 @@ public class ParejaService {
         return parejaDTO;
     }
 
-    /**
-     * En pádel, las categorías masculinas y femeninas exigen que ambos jugadores
-     * sean del mismo género. En torneos mixtos, la pareja DEBE ser un hombre y una mujer.
-     */
     private void validarGeneroPareja(Jugador j1, Jugador j2, Categoria categoria, boolean esMixto) {
         Genero g1 = j1.getGenero();
         Genero g2 = j2.getGenero();
@@ -152,11 +147,6 @@ public class ParejaService {
         parejaRepository.delete(pareja);
     }
 
-    /**
-     * Retira una pareja durante el torneo (EN_CURSO o SORTEADO).
-     * Genera W.O. automático en todos sus partidos PENDIENTES o EN_CURSO,
-     * asignando el W.O. al rival. Los partidos ya FINALIZADOS no se modifican.
-     */
     @Transactional
     public void retirarPareja(Long torneoId, Long parejaId) {
         Torneo torneo = torneoRepository.findById(torneoId)
@@ -177,7 +167,6 @@ public class ParejaService {
             throw new EstadoInvalidoException("La pareja no pertenece al torneo indicado");
         }
 
-        // Buscar todos los partidos pendientes/en curso donde participa la pareja
         List<Partido> partidosPendientes = partidoRepository.findByTorneoId(torneoId).stream()
                 .filter(p -> (p.getEstado().equals(EstadoPartido.PENDIENTE)
                            || p.getEstado().equals(EstadoPartido.EN_CURSO))
@@ -186,13 +175,12 @@ public class ParejaService {
 
         for (Partido partido : partidosPendientes) {
             Pareja rival = esLocal(partido, parejaId) ? partido.getVisitante() : partido.getLocal();
-            if (rival == null) continue;  // era un BYE, no hay rival
+            if (rival == null) continue;
 
             partido.setEstado(EstadoPartido.WALKOVER);
             partido.setGanador(rival);
             partidoRepository.save(partido);
 
-            // Avanzar bracket/liga si corresponde
             resultadoService.avanzarBracketDespuesDeWO(partido);
         }
     }

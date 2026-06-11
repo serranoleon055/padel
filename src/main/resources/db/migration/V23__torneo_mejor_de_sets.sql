@@ -1,0 +1,1 @@
+ALTER TABLE torneos ADD COLUMN mejor_de_sets INT NOT NULL DEFAULT 3;

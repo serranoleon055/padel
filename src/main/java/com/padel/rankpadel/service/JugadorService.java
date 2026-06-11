@@ -12,21 +12,28 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.padel.rankpadel.dto.request.JugadorRequest;
+import com.padel.rankpadel.dto.response.JugadorBusquedaResponse;
+import com.padel.rankpadel.dto.response.JugadorFichaResponse;
 import com.padel.rankpadel.dto.response.JugadorHistorialResponse;
 import com.padel.rankpadel.dto.response.JugadorResponse;
 import com.padel.rankpadel.entity.Categoria;
+import com.padel.rankpadel.entity.ConfiguracionPuntos;
 import com.padel.rankpadel.entity.Jugador;
 import com.padel.rankpadel.entity.Pareja;
 import com.padel.rankpadel.entity.Partido;
-import com.padel.rankpadel.entity.RankingEntry;
+import com.padel.rankpadel.entity.RondaEliminatorias;
+import com.padel.rankpadel.enums.FasePartido;
 import com.padel.rankpadel.exception.ResourceNotFoundException;
 import com.padel.rankpadel.mapper.JugadorMapper;
 import com.padel.rankpadel.mapper.PartidoMapper;
 import com.padel.rankpadel.repository.CategoriaRepository;
+import com.padel.rankpadel.repository.ConfiguracionPuntosRepository;
 import com.padel.rankpadel.repository.JugadorRepository;
 import com.padel.rankpadel.repository.ParejaRepository;
 import com.padel.rankpadel.repository.PartidoRepository;
 import com.padel.rankpadel.repository.RankingEntryRepository;
+import com.padel.rankpadel.repository.RondaEliminatoriasRepository;
+import com.padel.rankpadel.util.NormalizadorTexto;
 
 import lombok.RequiredArgsConstructor;
 
@@ -43,6 +50,8 @@ public class JugadorService {
     private final RankingEntryRepository rankingEntryRepository;
     private final RankingService rankingService;
     private final PartidoMapper partidoMapper;
+    private final ConfiguracionPuntosRepository configuracionPuntosRepository;
+    private final RondaEliminatoriasRepository rondaEliminatoriasRepository;
 
     @Transactional(readOnly = true)
     public List<JugadorResponse> listarTodos() {
@@ -61,6 +70,34 @@ public class JugadorService {
         }
         JugadorResponse jugadorDTO = jugadorMapper.jugadorToResponse(jugador);
         return jugadorDTO;
+    }
+
+    @Transactional(readOnly = true)
+    public JugadorFichaResponse obtenerFicha(Long id) {
+        Jugador jugador = jugadorRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Jugador", id));
+        return JugadorFichaResponse.builder()
+                .id(jugador.getId())
+                .fechaNacimiento(jugador.getFechaNacimiento())
+                .telefono(jugador.getTelefono())
+                .build();
+    }
+
+    @Transactional(readOnly = true)
+    public List<JugadorBusquedaResponse> buscar(String texto) {
+        String normalizado = NormalizadorTexto.normalizar(texto);
+        if (normalizado.isBlank()) {
+            return List.of();
+        }
+        return jugadorRepository.buscarPorNombreNormalizado(normalizado).stream()
+                .map(jugador -> JugadorBusquedaResponse.builder()
+                        .id(jugador.getId())
+                        .nombre(jugador.getNombre())
+                        .apellido(jugador.getApellido())
+                        .categoriaNombre(jugador.getCategoria() != null ? jugador.getCategoria().getNombre() : null)
+                        .genero(jugador.getGenero())
+                        .build())
+                .collect(Collectors.toList());
     }
 
     @Transactional
@@ -94,6 +131,12 @@ public class JugadorService {
         jugadorActualizado.setId(id);
         jugadorActualizado.setFechaRegistro(jugadorExistente.getFechaRegistro());
         jugadorActualizado.setActivo(jugadorExistente.isActivo());
+        if (request.getTelefono() == null || request.getTelefono().isBlank()) {
+            jugadorActualizado.setTelefono(jugadorExistente.getTelefono());
+        }
+        if (request.getFechaNacimiento() == null) {
+            jugadorActualizado.setFechaNacimiento(jugadorExistente.getFechaNacimiento());
+        }
 
         jugadorRepository.save(jugadorActualizado);
         return jugadorMapper.jugadorToResponse(jugadorActualizado);
@@ -120,7 +163,6 @@ public class JugadorService {
                 .orElseThrow(() -> new ResourceNotFoundException("Jugador", id));
         if (!jugador.isActivo()) throw new ResourceNotFoundException("Jugador", id);
 
-        // Ranking actual por categoría, con la misma posición que ve el público en cada tabla.
         var ranking = rankingEntryRepository.findByJugadorId(id).stream()
                 .filter(entry -> entry.getCategoria() != null)
                 .map(entry -> entry.getCategoria().getId())
@@ -129,10 +171,8 @@ public class JugadorService {
                 .filter(rankingItem -> rankingItem.getJugadorId().equals(id))
                 .collect(Collectors.toList());
 
-        // Partidos finalizados
         List<Partido> partidos = partidoRepository.findPartidosFinalizadosByJugadorId(id);
 
-        // Construir historial de torneos agrupando las parejas del jugador (solo torneos activos)
         List<Pareja> parejas = parejaRepository.findAll().stream()
                 .filter(p -> (p.getJugador1() != null && p.getJugador1().getId().equals(id))
                         || (p.getJugador2() != null && p.getJugador2().getId().equals(id)))
@@ -145,24 +185,44 @@ public class JugadorService {
             Long torneoId = pareja.getTorneo().getId();
             if (torneoMap.containsKey(torneoId)) continue;
 
-            // Puntos obtenidos en este torneo
-            int puntos = rankingEntryRepository
-                    .findByJugadorIdAndCategoriaIdAndTemporadaIsNull(id, pareja.getCategoria().getId())
-                    .map(RankingEntry::getPuntosTotales).orElse(0);
+            Long categoriaId = pareja.getCategoria() != null ? pareja.getCategoria().getId() : null;
 
-            // Mejor ronda: encontrar el partido más avanzado ganado
-            String mejorRonda = partidos.stream()
+            List<Partido> partidosDelTorneo = partidos.stream()
                     .filter(p -> p.getTorneo() != null && p.getTorneo().getId().equals(torneoId))
-                    .filter(p -> p.getGanador() != null && p.getGanador().getId().equals(pareja.getId()))
-                    .map(p -> p.getRonda() != null ? p.getRonda().getNombre()
-                            : (p.getGrupo() != null ? p.getGrupo().getNombre() : "Grupos"))
-                    .reduce((a, b) -> b)  // último (más avanzado) en orden de creación
-                    .orElse("—");
+                    .collect(Collectors.toList());
 
-            boolean fueGanador = partidos.stream()
-                    .filter(p -> p.getTorneo() != null && p.getTorneo().getId().equals(torneoId))
-                    .filter(p -> p.getRonda() != null && "Final".equalsIgnoreCase(p.getRonda().getNombre()))
-                    .anyMatch(p -> p.getGanador() != null && p.getGanador().getId().equals(pareja.getId()));
+            Map<String, ConfiguracionPuntos> configPorRonda = configuracionPuntosRepository
+                    .findByTorneoIdOrderByOrden(torneoId).stream()
+                    .collect(Collectors.toMap(ConfiguracionPuntos::getNombreRonda, config -> config, (a, b) -> a));
+
+            int puntos = 0;
+            for (Partido partido : partidosDelTorneo) {
+                String nombreRonda = partido.getFase() == FasePartido.GRUPOS || partido.getRonda() == null
+                        ? "Grupos"
+                        : partido.getRonda().getNombre();
+                ConfiguracionPuntos config = configPorRonda.get(nombreRonda);
+                if (config == null) continue;
+                boolean ganoPartido = partido.getGanador() != null && partido.getGanador().getId().equals(pareja.getId());
+                puntos += ganoPartido ? config.getPuntosGanador() : config.getPuntosPerdedor();
+            }
+
+            String mejorRonda = partidosDelTorneo.stream()
+                    .filter(p -> p.getRonda() != null)
+                    .max(Comparator.comparingInt(p -> p.getRonda().getOrden()))
+                    .map(p -> p.getRonda().getNombre())
+                    .orElse(partidosDelTorneo.isEmpty() ? "—" : "Fase de grupos");
+
+            boolean fueGanador = false;
+            if (categoriaId != null) {
+                List<RondaEliminatorias> rondas = rondaEliminatoriasRepository
+                        .findByTorneoIdAndCategoriaIdOrderByOrden(torneoId, categoriaId);
+                if (!rondas.isEmpty()) {
+                    int ordenFinal = rondas.get(rondas.size() - 1).getOrden();
+                    fueGanador = partidosDelTorneo.stream()
+                            .filter(p -> p.getRonda() != null && p.getRonda().getOrden() == ordenFinal)
+                            .anyMatch(p -> p.getGanador() != null && p.getGanador().getId().equals(pareja.getId()));
+                }
+            }
 
             torneoMap.put(torneoId, JugadorHistorialResponse.TorneoHistorialItem.builder()
                     .torneoId(torneoId)

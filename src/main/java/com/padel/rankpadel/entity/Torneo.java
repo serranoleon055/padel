@@ -49,10 +49,8 @@ public class Torneo {
     private String nombre;
     private String descripcion;
     private String imagenUrl;
-    /** Cupo total (compatibilidad). El cupo efectivo se toma por categoría desde {@link #cuposPorCategoria}. */
     private Integer cupoMaximoParejas;
 
-    /** Cupo máximo de parejas por categoría: categoriaId → cupo. */
     @Builder.Default
     @ElementCollection(fetch = FetchType.LAZY)
     @CollectionTable(name = "torneo_cupos_categoria", joinColumns = @JoinColumn(name = "torneo_id"))
@@ -82,6 +80,10 @@ public class Torneo {
     private Integer avanzanPorGrupo;
     private boolean incluyeFaseGrupos;
     private boolean incluyeEliminacion;
+
+    @Builder.Default
+    @Column(name = "mejor_de_sets")
+    private Integer mejorDeSets = 3;
 
     @Enumerated(EnumType.STRING)
     private TipoSorteo tipoSorteo;

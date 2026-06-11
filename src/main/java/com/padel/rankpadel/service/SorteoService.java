@@ -11,7 +11,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Comparator;
-import java.util.HashMap;
 
 import com.padel.rankpadel.entity.Categoria;
 import com.padel.rankpadel.entity.Grupo;
@@ -64,8 +63,6 @@ public class SorteoService {
             List<Pareja> parejas = parejaRepository
                     .findByTorneoIdAndCategoriaId(torneoId, categoria.getId());
 
-            // El sorteo aleatorio no admite cabezas de serie: limpiar cualquier marca manual.
-            // Cabezas de serie / combinado: asignarlas automáticamente según el ranking.
             if (TipoSorteo.ALEATORIO.equals(torneo.getTipoSorteo())) {
                 parejas.forEach(p -> p.setEsCabezaDeSerie(false));
                 parejaRepository.saveAll(parejas);
@@ -82,7 +79,6 @@ public class SorteoService {
                 throw new EstadoInvalidoException("La plantilla del torneo debe incluir fase de grupos o eliminación");
             }
 
-            // La liga usa un solo grupo con todas las parejas, sin eliminatoria
             if (torneo.getFormato().equals(FormatoTorneo.LIGA)) {
                 generarLiga(torneo, categoria, parejas);
                 continue;
@@ -105,13 +101,7 @@ public class SorteoService {
         torneoRepository.save(torneo);
     }
 
-    /**
-     * Calcula el puntaje de ranking de una pareja sumando los puntos globales de sus dos jugadores
-     * en la categoría dada, y marca como cabeza de serie las parejas con mayor puntaje.
-     * Los BYEs del bracket se otorgarán a los cabezas de serie (lógica ya implementada en generarBracket).
-     */
     private void asignarCabezasDeSerieAutomatico(List<Pareja> parejas, Long categoriaId) {
-        // Calcular score por pareja usando el ranking global de la categoría
         parejas.sort(Comparator.comparingInt((Pareja p) -> {
             int pts1 = rankingEntryRepository
                     .findByJugadorIdAndCategoriaIdAndTemporadaIsNull(p.getJugador1().getId(), categoriaId)
@@ -122,7 +112,6 @@ public class SorteoService {
             return pts1 + pts2;
         }).reversed());
 
-        // Número de cabezas de serie: 1 por cada 4 parejas (mín. 2, máx. 4)
         int numSeeds = Math.min(4, Math.max(2, parejas.size() / 4));
 
         for (int i = 0; i < parejas.size(); i++) {
@@ -131,10 +120,6 @@ public class SorteoService {
         parejaRepository.saveAll(parejas);
     }
 
-    /**
-     * Formato Liga: un único grupo con todas las parejas, todos contra todos.
-     * No hay fase eliminatoria. El campeón es la pareja con más puntos al final.
-     */
     private void generarLiga(Torneo torneo, Categoria categoria, List<Pareja> parejas) {
         Grupo grupo = Grupo.builder()
                 .nombre("Liga " + categoria.getNombre())
@@ -227,8 +212,6 @@ public class SorteoService {
     }
 
     private void generarBracket(Torneo torneo, Categoria categoria, List<Pareja> parejas) {
-        // Seeds: las cabezas de serie (ya ordenadas por ranking) primero, luego el resto al azar.
-        // BracketSeeder ubica a las cabezas en cuartos opuestos y les otorga los BYEs.
         List<Pareja> cabezas = parejas.stream()
                 .filter(Pareja::isEsCabezaDeSerie)
                 .collect(Collectors.toCollection(ArrayList::new));

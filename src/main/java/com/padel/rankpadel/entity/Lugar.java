@@ -28,4 +28,7 @@ public class Lugar {
     private String direccion;
     private Integer cantidadCanchas;
 
+    @Builder.Default
+    private boolean archivado = false;
+
 }
