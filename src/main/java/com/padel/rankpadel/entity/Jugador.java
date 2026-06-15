@@ -3,6 +3,7 @@ package com.padel.rankpadel.entity;
 import java.time.LocalDate;
 
 import com.padel.rankpadel.enums.Genero;
+import com.padel.rankpadel.enums.PosicionJuego;
 import com.padel.rankpadel.util.NormalizadorTexto;
 
 import jakarta.persistence.Entity;
@@ -54,6 +55,9 @@ public class Jugador {
     private String telefono;
     private LocalDate fechaNacimiento;
     private String nombreNormalizado;
+
+    @Enumerated(EnumType.STRING)
+    private PosicionJuego posicionJuego;
 
     @PrePersist
     @PreUpdate

@@ -1,5 +1,6 @@
 package com.padel.rankpadel.service;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
@@ -25,13 +26,34 @@ public class HorarioCanchaService {
 
     @Transactional
     public HorarioCanchaResponse guardar(HorarioCanchaRequest request) {
+        validarHoras(request);
         Cancha cancha = canchaRepository.findById(request.getCanchaId())
                 .orElseThrow(() -> new ResourceNotFoundException("Cancha", request.getCanchaId()));
+        return aResponse(aplicarHorario(cancha, request));
+    }
 
+    @Transactional
+    public List<HorarioCanchaResponse> guardarParaSucursal(Long lugarId, HorarioCanchaRequest request) {
+        validarHoras(request);
+        List<Cancha> canchas = canchaRepository.findByLugarIdAndActivoTrue(lugarId);
+        if (canchas.isEmpty()) {
+            throw new ResourceNotFoundException("Lugar", lugarId);
+        }
+
+        List<HorarioCanchaResponse> respuestas = new ArrayList<>();
+        for (Cancha cancha : canchas) {
+            respuestas.add(aResponse(aplicarHorario(cancha, request)));
+        }
+        return respuestas;
+    }
+
+    private void validarHoras(HorarioCanchaRequest request) {
         if (request.getHoraApertura().equals(request.getHoraCierre())) {
             throw new EstadoInvalidoException("La hora de apertura y la de cierre no pueden ser iguales");
         }
+    }
 
+    private HorarioCancha aplicarHorario(Cancha cancha, HorarioCanchaRequest request) {
         List<HorarioCancha> previos = horarioCanchaRepository.findByCanchaId(cancha.getId());
         for (HorarioCancha previo : previos) {
             previo.setActivo(false);
@@ -47,8 +69,7 @@ public class HorarioCanchaService {
                 .anticipacionDias(request.getAnticipacionDias() != null ? request.getAnticipacionDias() : 14)
                 .activo(true)
                 .build();
-        horarioCanchaRepository.save(horario);
-        return aResponse(horario);
+        return horarioCanchaRepository.save(horario);
     }
 
     @Transactional(readOnly = true)

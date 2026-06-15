@@ -4,14 +4,12 @@ import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
 
 import com.padel.rankpadel.entity.Categoria;
 import com.padel.rankpadel.entity.RankingEntry;
 import com.padel.rankpadel.entity.Temporada;
 import com.padel.rankpadel.enums.Genero;
 
-@Repository
 public interface RankingEntryRepository extends JpaRepository<RankingEntry, Long> {
 
     List<RankingEntry> findByCategoriaAndTemporada(Categoria categoria, Temporada temporada);

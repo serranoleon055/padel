@@ -20,6 +20,7 @@ public class JugadorMapper {
                 .fotoUrl(jugadorRequest.getFotoUrl())
                 .telefono(jugadorRequest.getTelefono())
                 .fechaNacimiento(jugadorRequest.getFechaNacimiento())
+                .posicionJuego(jugadorRequest.getPosicionJuego())
                 .fechaRegistro(LocalDate.now())
                 .categoria(categoria)
                 .build();
@@ -37,6 +38,7 @@ public class JugadorMapper {
                 .fechaRegistro(jugador.getFechaRegistro())
                 .categoriaId(getCategoriaId(jugador))
                 .categoriaNombre(getCategoriaNombre(jugador))
+                .posicionJuego(jugador.getPosicionJuego())
                 .build();
 
         return respuesta;

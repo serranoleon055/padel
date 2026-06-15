@@ -4,6 +4,7 @@ import java.util.List;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -53,5 +54,17 @@ public class RankingController {
             @Parameter(description = "ID de la categoría (opcional)") @RequestParam(required = false) Long categoriaId,
             @Parameter(description = "Género para filtrar: MASCULINO o FEMENINO (opcional)") @RequestParam(required = false) Genero genero) {
         return ResponseEntity.ok(rankingService.obtenerRanking(categoriaId, genero));
+    }
+
+    @Operation(summary = "Recalcular los puntos del ranking", description = """
+            Requiere JWT de admin. Resetea los puntos acumulados y los vuelve a sumar a partir de los
+            partidos finalizados de torneos que suman al ranking, usando los nombres de ronda normalizados.
+            Útil para corregir datos cargados antes de un arreglo de cálculo de puntos.
+            """)
+    @ApiResponse(responseCode = "200", description = "Ranking recalculado")
+    @PostMapping("/recalcular")
+    public ResponseEntity<String> recalcularPuntos() {
+        int partidos = rankingService.recalcularPuntos();
+        return ResponseEntity.ok("Ranking recalculado a partir de " + partidos + " partidos.");
     }
 }

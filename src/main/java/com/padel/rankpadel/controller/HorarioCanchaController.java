@@ -30,6 +30,12 @@ public class HorarioCanchaController {
         return ResponseEntity.status(HttpStatus.CREATED).body(horarioCanchaService.guardar(request));
     }
 
+    @PostMapping("/sucursal")
+    public ResponseEntity<List<HorarioCanchaResponse>> guardarParaSucursal(
+            @RequestParam Long lugarId, @Valid @RequestBody HorarioCanchaRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(horarioCanchaService.guardarParaSucursal(lugarId, request));
+    }
+
     @GetMapping
     public ResponseEntity<List<HorarioCanchaResponse>> listar(@RequestParam Long canchaId) {
         return ResponseEntity.ok(horarioCanchaService.listarPorCancha(canchaId));

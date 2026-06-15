@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -48,7 +49,7 @@ class ReservaServiceTest {
     @BeforeEach
     void setUp() {
         cancha = Cancha.builder().id(1L).nombre("Cancha 1").activo(true).build();
-        when(disponibilidadCanchaService.inicioReal(eq(1L), any(LocalDate.class), any(LocalTime.class)))
+        lenient().when(disponibilidadCanchaService.inicioReal(eq(1L), any(LocalDate.class), any(LocalTime.class)))
                 .thenAnswer(invocacion -> ((LocalDate) invocacion.getArgument(1))
                         .atTime((LocalTime) invocacion.getArgument(2)));
     }
@@ -75,7 +76,6 @@ class ReservaServiceTest {
     @DisplayName("Bloquea si el teléfono ya tiene demasiadas reservas pendientes (anti-abuso)")
     void solicitar_demasiadosPendientes_lanza() {
         when(canchaRepository.findById(1L)).thenReturn(Optional.of(cancha));
-        when(disponibilidadCanchaService.duracionSlot(1L)).thenReturn(60);
         when(reservaRepository.countByClienteTelefonoAndEstado("3851234567", EstadoReserva.PENDIENTE)).thenReturn(3L);
 
         assertThrows(EstadoInvalidoException.class,

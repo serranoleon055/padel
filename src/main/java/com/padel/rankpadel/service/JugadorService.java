@@ -33,6 +33,7 @@ import com.padel.rankpadel.repository.ParejaRepository;
 import com.padel.rankpadel.repository.PartidoRepository;
 import com.padel.rankpadel.repository.RankingEntryRepository;
 import com.padel.rankpadel.repository.RondaEliminatoriasRepository;
+import com.padel.rankpadel.util.NormalizadorRonda;
 import com.padel.rankpadel.util.NormalizadorTexto;
 
 import lombok.RequiredArgsConstructor;
@@ -193,14 +194,14 @@ public class JugadorService {
 
             Map<String, ConfiguracionPuntos> configPorRonda = configuracionPuntosRepository
                     .findByTorneoIdOrderByOrden(torneoId).stream()
-                    .collect(Collectors.toMap(ConfiguracionPuntos::getNombreRonda, config -> config, (a, b) -> a));
+                    .collect(Collectors.toMap(config -> NormalizadorRonda.normalizar(config.getNombreRonda()), config -> config, (a, b) -> a));
 
             int puntos = 0;
             for (Partido partido : partidosDelTorneo) {
                 String nombreRonda = partido.getFase() == FasePartido.GRUPOS || partido.getRonda() == null
                         ? "Grupos"
                         : partido.getRonda().getNombre();
-                ConfiguracionPuntos config = configPorRonda.get(nombreRonda);
+                ConfiguracionPuntos config = configPorRonda.get(NormalizadorRonda.normalizar(nombreRonda));
                 if (config == null) continue;
                 boolean ganoPartido = partido.getGanador() != null && partido.getGanador().getId().equals(pareja.getId());
                 puntos += ganoPartido ? config.getPuntosGanador() : config.getPuntosPerdedor();

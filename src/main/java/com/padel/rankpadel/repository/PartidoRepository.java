@@ -3,7 +3,6 @@ package com.padel.rankpadel.repository;
 import java.util.List;
 
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
 
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -12,7 +11,6 @@ import com.padel.rankpadel.entity.Partido;
 import com.padel.rankpadel.enums.EstadoPartido;
 import com.padel.rankpadel.enums.FasePartido;
 
-@Repository
 public interface PartidoRepository extends JpaRepository<Partido, Long> {
 
     List<Partido> findByTorneoId(Long torneoId);
@@ -86,6 +84,27 @@ public interface PartidoRepository extends JpaRepository<Partido, Long> {
         ORDER BY p.id DESC
         """)
     List<Partido> findUltimasFinales();
+
+    @Query("""
+        SELECT p FROM Partido p
+        WHERE p.estado = 'FINALIZADO'
+          AND p.ronda IS NOT NULL
+          AND LOWER(p.ronda.nombre) = 'final'
+          AND p.ganador IS NOT NULL
+          AND p.torneo.activo = true
+        ORDER BY p.fechaHora DESC NULLS LAST, p.id DESC
+        """)
+    List<Partido> findCampeones();
+
+    @Query("""
+        SELECT p FROM Partido p
+        WHERE p.estado IN ('FINALIZADO', 'RETIRO')
+          AND p.ganador IS NOT NULL
+          AND p.torneo.activo = true
+          AND p.torneo.sumaPuntosRanking = true
+        ORDER BY p.id ASC
+        """)
+    List<Partido> findPartidosQueSumanPuntos();
 
     @Query("""
         SELECT p FROM Partido p

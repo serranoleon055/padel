@@ -3,6 +3,7 @@ package com.padel.rankpadel.dto.response;
 import java.time.LocalDate;
 
 import com.padel.rankpadel.enums.Genero;
+import com.padel.rankpadel.enums.PosicionJuego;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -25,5 +26,6 @@ public class JugadorResponse {
     private LocalDate fechaRegistro;
     private Long categoriaId;
     private String categoriaNombre;
+    private PosicionJuego posicionJuego;
 
 }

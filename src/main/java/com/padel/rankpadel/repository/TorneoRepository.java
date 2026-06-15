@@ -4,14 +4,12 @@ import java.util.List;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
-import org.springframework.stereotype.Repository;
 
 import com.padel.rankpadel.entity.Lugar;
 import com.padel.rankpadel.entity.Temporada;
 import com.padel.rankpadel.entity.Torneo;
 import com.padel.rankpadel.enums.EstadoTorneo;
 
-@Repository
 public interface TorneoRepository extends JpaRepository<Torneo, Long> {
 
     List<Torneo> findByEstadoIn(List<EstadoTorneo> estados);

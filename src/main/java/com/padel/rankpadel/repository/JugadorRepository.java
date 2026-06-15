@@ -3,14 +3,12 @@ package com.padel.rankpadel.repository;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-import org.springframework.stereotype.Repository;
 
 import com.padel.rankpadel.entity.Jugador;
 import java.util.List;
 import com.padel.rankpadel.enums.Genero;
 import com.padel.rankpadel.entity.Categoria;
 
-@Repository
 public interface JugadorRepository extends JpaRepository<Jugador, Long> {
 
     List<Jugador> findByGenero(Genero genero);

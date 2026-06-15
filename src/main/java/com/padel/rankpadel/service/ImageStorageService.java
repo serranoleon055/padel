@@ -7,6 +7,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -88,11 +89,11 @@ public class ImageStorageService {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         ImageIO.write(resized, "jpg", baos);
 
-        Map<String, Object> opciones = ObjectUtils.asMap(
-                "folder", "rankpadel/" + carpeta,
-                "public_id", prefijo + "-" + UUID.randomUUID(),
-                "resource_type", "image",
-                "overwrite", true);
+        Map<String, Object> opciones = new HashMap<>();
+        opciones.put("folder", "rankpadel/" + carpeta);
+        opciones.put("public_id", prefijo + "-" + UUID.randomUUID());
+        opciones.put("resource_type", "image");
+        opciones.put("overwrite", true);
 
         Map<?, ?> resultado = getCloudinary().uploader().upload(baos.toByteArray(), opciones);
         Object secureUrl = resultado.get("secure_url");

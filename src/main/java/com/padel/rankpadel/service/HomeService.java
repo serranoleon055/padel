@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.padel.rankpadel.dto.response.AdminDashboardResponse;
 import com.padel.rankpadel.dto.response.HomeResponse;
 import com.padel.rankpadel.dto.response.HomeSummaryResponse;
+import com.padel.rankpadel.dto.response.PagedResponse;
 import com.padel.rankpadel.dto.response.PartidoResponse;
 import com.padel.rankpadel.dto.response.RankingResponse;
 import com.padel.rankpadel.dto.response.TemporadaResponse;
@@ -122,6 +123,15 @@ public class HomeService {
     }
 
     @Transactional(readOnly = true)
+    public PagedResponse<PartidoResponse> obtenerCampeones(Long categoriaId, int pagina, int tamanio) {
+        List<PartidoResponse> campeones = partidoRepository.findCampeones().stream()
+                .map(partidoMapper::partidoToResponse)
+                .filter(partido -> categoriaId == null || categoriaId.equals(partido.getCategoriaId()))
+                .toList();
+        return PagedResponse.of(campeones, pagina, tamanio);
+    }
+
+    @Transactional(readOnly = true)
     public HomeResponse obtenerHome() {
         List<Torneo> torneos = torneoRepository.findByActivoTrue();
         List<Partido> resultados = partidoRepository.findTop10ByEstadoOrderByFechaHoraDescIdDesc(EstadoPartido.FINALIZADO);
@@ -211,13 +221,6 @@ public class HomeService {
 
     private boolean esTorneoPublicoDestacable(Torneo torneo) {
         return ESTADOS_PUBLICOS_ACTIVOS.contains(torneo.getEstado());
-    }
-
-    private boolean esFinalConCampeon(Partido partido) {
-        return partido.getGanador() != null
-                && partido.getRonda() != null
-                && partido.getRonda().getNombre() != null
-                && partido.getRonda().getNombre().equalsIgnoreCase("Final");
     }
 
     private int prioridadDestacado(Torneo torneo) {

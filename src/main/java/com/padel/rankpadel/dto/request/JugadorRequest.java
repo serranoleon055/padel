@@ -3,6 +3,7 @@ package com.padel.rankpadel.dto.request;
 import java.time.LocalDate;
 
 import com.padel.rankpadel.enums.Genero;
+import com.padel.rankpadel.enums.PosicionJuego;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
@@ -44,4 +45,7 @@ public class JugadorRequest {
 
     @Schema(description = "Fecha de nacimiento (opcional)")
     private LocalDate fechaNacimiento;
+
+    @Schema(description = "Posición de juego preferida: DRIVE o REVES (opcional)", example = "DRIVE")
+    private PosicionJuego posicionJuego;
 }
