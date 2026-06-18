@@ -46,6 +46,7 @@ public class ResultadoService {
     private final RondaEliminatoriasRepository rondaEliminatoriasRepository;
     private final GrupoRepository grupoRepository;
     private final RankingService rankingService;
+    private final CampeonService campeonService;
 
     @Transactional
     public PartidoResponse cargarResultado(Long torneoId, Long partidoId, ResultadoRequest request) {
@@ -428,6 +429,9 @@ public class ResultadoService {
                 torneoRepository.save(torneo);
                 rankingService.cerrarTorneo(torneo.getId());
             }
+            // La final de esta categoría ya se definió: registrar campeón aunque
+            // el torneo siga en curso para otras categorías.
+            campeonService.recalcularCampeones(torneo);
             return;
         }
 
@@ -473,6 +477,7 @@ public class ResultadoService {
             torneoActual.setEstado(EstadoTorneo.FINALIZADO);
             torneoRepository.save(torneoActual);
             rankingService.cerrarTorneo(torneo.getId());
+            campeonService.recalcularCampeones(torneoActual);
         }
     }
 

@@ -29,6 +29,7 @@ import com.padel.rankpadel.dto.response.ParejaResponse;
 import com.padel.rankpadel.dto.response.PartidoResponse;
 import com.padel.rankpadel.dto.response.TorneoDetalleResponse;
 import com.padel.rankpadel.dto.response.TorneoResponse;
+import com.padel.rankpadel.service.CampeonService;
 import com.padel.rankpadel.service.ParejaService;
 import com.padel.rankpadel.service.PartidoService;
 import com.padel.rankpadel.service.ResultadoService;
@@ -57,6 +58,7 @@ public class TorneoController {
         private final SorteoService sorteoService;
         private final PartidoService partidoService;
         private final ResultadoService resultadoService;
+        private final CampeonService campeonService;
 
         @SecurityRequirements({})
         @Operation(summary = "Listar todos los torneos (sin paginar — para compatibilidad)")
@@ -64,6 +66,13 @@ public class TorneoController {
         @GetMapping
         public ResponseEntity<List<TorneoResponse>> listarTodos() {
                 return ResponseEntity.ok(torneoService.listarTodos());
+        }
+
+        @Operation(summary = "Recalcular campeones de torneos finalizados (backfill, requiere JWT)")
+        @ApiResponse(responseCode = "200", description = "Cantidad de torneos recalculados")
+        @PostMapping("/recalcular-campeones")
+        public ResponseEntity<Integer> recalcularCampeones() {
+                return ResponseEntity.ok(campeonService.recalcularTodosFinalizados());
         }
 
         @SecurityRequirements({})
@@ -97,6 +106,7 @@ public class TorneoController {
                                 .torneo(torneoService.buscarPorId(id))
                                 .parejas(parejaService.listarPorTorneo(id))
                                 .partidos(partidoService.listarPorTorneo(id))
+                                .campeones(campeonService.porTorneo(id))
                                 .build());
         }
 

@@ -21,7 +21,7 @@ public class HomeResponse {
     private List<TorneoResponse> torneosEnVivo;
     private List<PartidoResponse> partidosEnVivo;
     private List<PartidoResponse> ultimosResultados;
-    private List<PartidoResponse> ultimosCampeones;
+    private List<CampeonResponse> ultimosCampeones;
     private List<RankingResponse> rankingDestacado;
 
 }

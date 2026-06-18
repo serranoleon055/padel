@@ -60,6 +60,7 @@ public class TorneoService {
     private final GrupoRepository grupoRepository;
     private final PosicionGrupoRepository posicionGrupoRepository;
     private final RankingService rankingService;
+    private final CampeonService campeonService;
     private final ImageStorageService imageStorageService;
 
     private static final Map<EstadoTorneo, List<EstadoTorneo>> TRANSICIONES = Map.of(
@@ -216,10 +217,15 @@ public class TorneoService {
 
         if (estadoAnterior.equals(EstadoTorneo.FINALIZADO) && nuevoEstado.equals(EstadoTorneo.EN_CURSO)) {
             rankingService.reabrirTorneo(torneoId);
+            campeonService.eliminarPorTorneo(torneoId);
         }
 
         torneo.setEstado(nuevoEstado);
         torneoRepository.save(torneo);
+
+        if (nuevoEstado.equals(EstadoTorneo.FINALIZADO)) {
+            campeonService.recalcularCampeones(torneo);
+        }
 
         return mapearConMetricas(torneo);
     }

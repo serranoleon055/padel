@@ -7,10 +7,11 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.padel.rankpadel.dto.response.AdminDashboardResponse;
+import com.padel.rankpadel.dto.response.CampeonResponse;
 import com.padel.rankpadel.dto.response.HomeResponse;
 import com.padel.rankpadel.dto.response.HomeSummaryResponse;
 import com.padel.rankpadel.dto.response.PagedResponse;
-import com.padel.rankpadel.dto.response.PartidoResponse;
+import com.padel.rankpadel.enums.Genero;
 import com.padel.rankpadel.service.HomeService;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -53,11 +54,12 @@ public class HomeController {
     @Operation(summary = "Listar todos los campeones (finales ganadas) paginado, con filtro opcional por categoria")
     @ApiResponse(responseCode = "200", description = "Campeones devueltos exitosamente")
     @GetMapping("/campeones")
-    public ResponseEntity<PagedResponse<PartidoResponse>> obtenerCampeones(
+    public ResponseEntity<PagedResponse<CampeonResponse>> obtenerCampeones(
             @RequestParam(required = false) Long categoriaId,
+            @RequestParam(required = false) Genero genero,
             @RequestParam(defaultValue = "0") int pagina,
             @RequestParam(defaultValue = "10") int tamanio) {
-        return ResponseEntity.ok(homeService.obtenerCampeones(categoriaId, pagina, tamanio));
+        return ResponseEntity.ok(homeService.obtenerCampeones(categoriaId, genero, pagina, tamanio));
     }
 
 }

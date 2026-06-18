@@ -18,5 +18,6 @@ public class TorneoDetalleResponse {
     private TorneoResponse torneo;
     private List<ParejaResponse> parejas;
     private List<PartidoResponse> partidos;
+    private List<CampeonResponse> campeones;
 
 }

@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.padel.rankpadel.dto.response.AdminDashboardResponse;
+import com.padel.rankpadel.dto.response.CampeonResponse;
 import com.padel.rankpadel.dto.response.HomeResponse;
 import com.padel.rankpadel.dto.response.HomeSummaryResponse;
 import com.padel.rankpadel.dto.response.PagedResponse;
@@ -25,6 +26,7 @@ import com.padel.rankpadel.entity.Temporada;
 import com.padel.rankpadel.entity.Torneo;
 import com.padel.rankpadel.enums.EstadoPartido;
 import com.padel.rankpadel.enums.EstadoTorneo;
+import com.padel.rankpadel.enums.Genero;
 import com.padel.rankpadel.mapper.PartidoMapper;
 import com.padel.rankpadel.mapper.TemporadaMapper;
 import com.padel.rankpadel.mapper.TorneoMapper;
@@ -56,6 +58,7 @@ public class HomeService {
     private final TemporadaRepository temporadaRepository;
     private final TemporadaMapper temporadaMapper;
     private final RankingService rankingService;
+    private final CampeonService campeonService;
 
     @Transactional(readOnly = true)
     public HomeSummaryResponse obtenerSummary() {
@@ -123,12 +126,8 @@ public class HomeService {
     }
 
     @Transactional(readOnly = true)
-    public PagedResponse<PartidoResponse> obtenerCampeones(Long categoriaId, int pagina, int tamanio) {
-        List<PartidoResponse> campeones = partidoRepository.findCampeones().stream()
-                .map(partidoMapper::partidoToResponse)
-                .filter(partido -> categoriaId == null || categoriaId.equals(partido.getCategoriaId()))
-                .toList();
-        return PagedResponse.of(campeones, pagina, tamanio);
+    public PagedResponse<CampeonResponse> obtenerCampeones(Long categoriaId, Genero genero, int pagina, int tamanio) {
+        return campeonService.listar(categoriaId, genero, pagina, tamanio);
     }
 
     @Transactional(readOnly = true)
@@ -154,10 +153,7 @@ public class HomeService {
                 .map(partidoMapper::partidoToResponse)
                 .toList();
 
-        List<PartidoResponse> ultimosCampeones = partidoRepository.findUltimasFinales().stream()
-                .limit(5)
-                .map(partidoMapper::partidoToResponse)
-                .toList();
+        List<CampeonResponse> ultimosCampeones = campeonService.ultimos(5);
 
         List<RankingResponse> rankingDestacado = rankingService.obtenerRanking(null, null).stream()
                 .limit(5)
