@@ -16,6 +16,28 @@ public interface PartidoRepository extends JpaRepository<Partido, Long> {
 
     List<Partido> findByTorneoId(Long torneoId);
 
+    @Query("""
+        SELECT DISTINCT p FROM Partido p
+        LEFT JOIN FETCH p.cancha
+        LEFT JOIN FETCH p.torneo t
+        LEFT JOIN FETCH t.lugar
+        LEFT JOIN FETCH p.grupo g
+        LEFT JOIN FETCH g.categoria
+        LEFT JOIN FETCH p.ronda r
+        LEFT JOIN FETCH r.categoria
+        LEFT JOIN FETCH p.local lo
+        LEFT JOIN FETCH lo.jugador1
+        LEFT JOIN FETCH lo.jugador2
+        LEFT JOIN FETCH lo.categoria
+        LEFT JOIN FETCH p.visitante vi
+        LEFT JOIN FETCH vi.jugador1
+        LEFT JOIN FETCH vi.jugador2
+        LEFT JOIN FETCH vi.categoria
+        LEFT JOIN FETCH p.ganador
+        WHERE p.torneo.id = :torneoId
+        """)
+    List<Partido> findDetalladosByTorneoId(@Param("torneoId") Long torneoId);
+
     List<Partido> findByTorneoIdAndFase(Long torneoId, FasePartido fase);
 
     List<Partido> findByGrupoId(Long grupoId);
@@ -108,13 +130,26 @@ public interface PartidoRepository extends JpaRepository<Partido, Long> {
     List<Partido> findPartidosQueSumanPuntos();
 
     @Query("""
-        SELECT p FROM Partido p
+        SELECT DISTINCT p FROM Partido p
+        LEFT JOIN FETCH p.torneo t
+        LEFT JOIN FETCH t.lugar
+        LEFT JOIN FETCH p.grupo
+        LEFT JOIN FETCH p.ronda
+        LEFT JOIN FETCH p.local lo
+        LEFT JOIN FETCH lo.jugador1
+        LEFT JOIN FETCH lo.jugador2
+        LEFT JOIN FETCH lo.categoria
+        LEFT JOIN FETCH p.visitante vi
+        LEFT JOIN FETCH vi.jugador1
+        LEFT JOIN FETCH vi.jugador2
+        LEFT JOIN FETCH vi.categoria
+        LEFT JOIN FETCH p.ganador
         WHERE (p.estado = 'FINALIZADO' OR p.estado = 'WALKOVER' OR p.estado = 'RETIRO')
           AND p.torneo.activo = true
           AND (
-            (p.local IS NOT NULL AND (p.local.jugador1.id = :jugadorId OR p.local.jugador2.id = :jugadorId))
+            (lo IS NOT NULL AND (lo.jugador1.id = :jugadorId OR lo.jugador2.id = :jugadorId))
             OR
-            (p.visitante IS NOT NULL AND (p.visitante.jugador1.id = :jugadorId OR p.visitante.jugador2.id = :jugadorId))
+            (vi IS NOT NULL AND (vi.jugador1.id = :jugadorId OR vi.jugador2.id = :jugadorId))
           )
         ORDER BY p.fechaHora DESC NULLS LAST, p.id DESC
         """)

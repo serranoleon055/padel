@@ -42,7 +42,7 @@ public class PartidoService {
         torneoRepository.findById(torneoId)
                 .orElseThrow(() -> new ResourceNotFoundException("Torneo", torneoId));
 
-        List<Partido> partidos = partidoRepository.findByTorneoId(torneoId);
+        List<Partido> partidos = partidoRepository.findDetalladosByTorneoId(torneoId);
 
         return partidos.stream()
                 .map(partidoMapper::partidoToResponse)
