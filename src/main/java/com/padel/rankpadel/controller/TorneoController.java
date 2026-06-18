@@ -23,6 +23,7 @@ import com.padel.rankpadel.dto.request.ProgramarPartidoRequest;
 import com.padel.rankpadel.dto.request.ResultadoRequest;
 import com.padel.rankpadel.dto.request.TorneoRequest;
 import com.padel.rankpadel.dto.request.WalkoverRequest;
+import com.padel.rankpadel.dto.response.CrucePreviewResponse;
 import com.padel.rankpadel.dto.response.PagedResponse;
 import com.padel.rankpadel.dto.response.GrupoResponse;
 import com.padel.rankpadel.dto.response.ParejaResponse;
@@ -30,6 +31,7 @@ import com.padel.rankpadel.dto.response.PartidoResponse;
 import com.padel.rankpadel.dto.response.TorneoDetalleResponse;
 import com.padel.rankpadel.dto.response.TorneoResponse;
 import com.padel.rankpadel.service.CampeonService;
+import com.padel.rankpadel.service.CuadroPreviewService;
 import com.padel.rankpadel.service.ParejaService;
 import com.padel.rankpadel.service.PartidoService;
 import com.padel.rankpadel.service.ResultadoService;
@@ -59,6 +61,7 @@ public class TorneoController {
         private final PartidoService partidoService;
         private final ResultadoService resultadoService;
         private final CampeonService campeonService;
+        private final CuadroPreviewService cuadroPreviewService;
 
         @SecurityRequirements({})
         @Operation(summary = "Listar todos los torneos (sin paginar — para compatibilidad)")
@@ -108,6 +111,16 @@ public class TorneoController {
                                 .partidos(partidoService.listarPorTorneo(id))
                                 .campeones(campeonService.porTorneo(id))
                                 .build());
+        }
+
+        @SecurityRequirements({})
+        @Operation(summary = "Previsualizar los cruces del cuadro por posición (1° A vs 2° B, etc.)")
+        @ApiResponse(responseCode = "200", description = "Cruces previstos del cuadro")
+        @GetMapping("/{id}/cuadro-preview")
+        public ResponseEntity<List<CrucePreviewResponse>> previsualizarCuadro(
+                        @Parameter(description = "ID del torneo") @PathVariable Long id,
+                        @org.springframework.web.bind.annotation.RequestParam Long categoriaId) {
+                return ResponseEntity.ok(cuadroPreviewService.previsualizar(id, categoriaId));
         }
 
         @SecurityRequirements({})

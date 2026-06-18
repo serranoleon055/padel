@@ -70,6 +70,10 @@ public final class BracketSeeder {
         return partidos;
     }
 
+    public static int[] ordenDeSiembra(int n) {
+        return seedSlots(n);
+    }
+
     private static int[] seedSlots(int n) {
         List<Integer> order = new ArrayList<>();
         order.add(1);
