@@ -12,6 +12,7 @@ import com.padel.rankpadel.entity.Categoria;
 import com.padel.rankpadel.entity.Lugar;
 import com.padel.rankpadel.entity.Temporada;
 import com.padel.rankpadel.entity.Torneo;
+import com.padel.rankpadel.enums.FormatoTorneo;
 
 @Component
 public class TorneoMapper {
@@ -41,13 +42,24 @@ public class TorneoMapper {
                 .avanzanPorGrupo(torneoRequest.getAvanzanPorGrupo())
                 .incluyeFaseGrupos(torneoRequest.isIncluyeFaseGrupos())
                 .incluyeEliminacion(torneoRequest.isIncluyeEliminacion())
-                .mejorDeSets(torneoRequest.getMejorDeSets() != null ? torneoRequest.getMejorDeSets() : 3)
+                .mejorDeSets(mejorDeSetsPorDefecto(torneoRequest.getMejorDeSets(), torneoRequest.getFormato()))
                 .tipoSorteo(torneoRequest.getTipoSorteo())
                 .temporada(temporada)
                 .lugar(lugar)
                 .build();
 
         return torneo;
+    }
+
+    /**
+     * Sets por formato: si el request no especifica mejorDeSets, se usa 1 para
+     * MINITORNEO y 3 para el resto (liga, eliminación directa, torneo largo).
+     */
+    public static int mejorDeSetsPorDefecto(Integer mejorDeSets, FormatoTorneo formato) {
+        if (mejorDeSets != null) {
+            return mejorDeSets;
+        }
+        return formato == FormatoTorneo.MINITORNEO ? 1 : 3;
     }
 
     public TorneoResponse torneoToResponse(Torneo torneo) {

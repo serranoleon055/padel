@@ -167,7 +167,7 @@ public class TorneoService {
             torneoExistente.setAvanzanPorGrupo(torneoRequest.getAvanzanPorGrupo());
             torneoExistente.setIncluyeFaseGrupos(torneoRequest.isIncluyeFaseGrupos());
             torneoExistente.setIncluyeEliminacion(torneoRequest.isIncluyeEliminacion());
-            torneoExistente.setMejorDeSets(torneoRequest.getMejorDeSets() != null ? torneoRequest.getMejorDeSets() : 3);
+            torneoExistente.setMejorDeSets(TorneoMapper.mejorDeSetsPorDefecto(torneoRequest.getMejorDeSets(), torneoRequest.getFormato()));
             torneoExistente.setTipoSorteo(torneoRequest.getTipoSorteo());
             torneoExistente.setCupoMaximoParejas(torneoRequest.getCupoMaximoParejas());
             torneoExistente.setCuposPorCategoria(torneoRequest.getCuposPorCategoria() != null
