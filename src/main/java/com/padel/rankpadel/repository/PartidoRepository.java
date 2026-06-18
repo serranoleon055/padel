@@ -1,5 +1,6 @@
 package com.padel.rankpadel.repository;
 
+import java.util.Collection;
 import java.util.List;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -118,5 +119,31 @@ public interface PartidoRepository extends JpaRepository<Partido, Long> {
         ORDER BY p.fechaHora DESC NULLS LAST, p.id DESC
         """)
     List<Partido> findPartidosFinalizadosByJugadorId(@Param("jugadorId") Long jugadorId);
+
+    @Query("""
+        SELECT p FROM Partido p
+        LEFT JOIN FETCH p.local
+        LEFT JOIN FETCH p.visitante
+        WHERE p.estado IN :estados
+          AND p.torneo.activo = true
+          AND ((p.local IS NOT NULL AND p.local.categoria.id IN :categoriaIds)
+            OR (p.visitante IS NOT NULL AND p.visitante.categoria.id IN :categoriaIds))
+        """)
+    List<Partido> findJugadosPorCategorias(@Param("categoriaIds") Collection<Long> categoriaIds,
+                                           @Param("estados") List<EstadoPartido> estados);
+
+    @Query("""
+        SELECT p FROM Partido p
+        LEFT JOIN FETCH p.local
+        LEFT JOIN FETCH p.visitante
+        WHERE p.estado IN :estados
+          AND p.torneo.activo = true
+          AND p.torneo.temporada.id = :temporadaId
+          AND ((p.local IS NOT NULL AND p.local.categoria.id IN :categoriaIds)
+            OR (p.visitante IS NOT NULL AND p.visitante.categoria.id IN :categoriaIds))
+        """)
+    List<Partido> findJugadosPorCategoriasYTemporada(@Param("categoriaIds") Collection<Long> categoriaIds,
+                                                     @Param("temporadaId") Long temporadaId,
+                                                     @Param("estados") List<EstadoPartido> estados);
 
 }

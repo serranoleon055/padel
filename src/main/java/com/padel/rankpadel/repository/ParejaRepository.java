@@ -7,7 +7,6 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import com.padel.rankpadel.entity.Pareja;
-import com.padel.rankpadel.enums.EstadoTorneo;
 
 public interface ParejaRepository extends JpaRepository<Pareja, Long> {
 
@@ -26,26 +25,16 @@ public interface ParejaRepository extends JpaRepository<Pareja, Long> {
     @Query("SELECT COUNT(p) > 0 FROM Pareja p WHERE p.torneo.id = :torneoId AND p.categoria.id = :categoriaId AND (p.jugador1.id = :jugadorId OR p.jugador2.id = :jugadorId)")
     boolean jugadorYaInscriptoEnCategoria(@Param("torneoId") Long torneoId, @Param("categoriaId") Long categoriaId, @Param("jugadorId") Long jugadorId);
 
-    @Query("""
-            SELECT COUNT(DISTINCT p.torneo.id) FROM Pareja p
-            WHERE p.categoria.id = :categoriaId
-              AND (p.jugador1.id = :jugadorId OR p.jugador2.id = :jugadorId)
-              AND p.torneo.estado IN :estados
-            """)
-    long contarTorneosJugados(@Param("jugadorId") Long jugadorId,
-                              @Param("categoriaId") Long categoriaId,
-                              @Param("estados") List<EstadoTorneo> estados);
+    @Query("SELECT COUNT(p) > 0 FROM Pareja p WHERE p.torneo.id = :torneoId AND p.categoria.id = :categoriaId AND p.id <> :parejaId AND (p.jugador1.id = :jugadorId OR p.jugador2.id = :jugadorId)")
+    boolean jugadorYaInscriptoEnCategoriaExcluyendo(@Param("torneoId") Long torneoId, @Param("categoriaId") Long categoriaId, @Param("jugadorId") Long jugadorId, @Param("parejaId") Long parejaId);
 
     @Query("""
-            SELECT COUNT(DISTINCT p.torneo.id) FROM Pareja p
-            WHERE p.categoria.id = :categoriaId
-              AND (p.jugador1.id = :jugadorId OR p.jugador2.id = :jugadorId)
-              AND p.torneo.estado IN :estados
-              AND p.torneo.temporada.id = :temporadaId
+            SELECT p FROM Pareja p
+            LEFT JOIN FETCH p.torneo t
+            LEFT JOIN FETCH p.categoria
+            WHERE (p.jugador1.id = :jugadorId OR p.jugador2.id = :jugadorId)
+              AND t.activo = true
             """)
-    long contarTorneosJugadosPorTemporada(@Param("jugadorId") Long jugadorId,
-                                          @Param("categoriaId") Long categoriaId,
-                                          @Param("temporadaId") Long temporadaId,
-                                          @Param("estados") List<EstadoTorneo> estados);
+    List<Pareja> findByJugador(@Param("jugadorId") Long jugadorId);
 
 }

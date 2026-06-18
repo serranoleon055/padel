@@ -2,10 +2,13 @@ package com.padel.rankpadel.service;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -50,8 +53,8 @@ public class RankingService {
             .thenComparingInt(RankingEntry::getDerrotas)
             .thenComparingLong(RankingService::idJugador);
 
-    private static final List<EstadoTorneo> ESTADOS_TORNEO_JUGADO = List.of(EstadoTorneo.EN_CURSO,
-            EstadoTorneo.FINALIZADO);
+    private static final List<EstadoPartido> ESTADOS_PARTIDO_JUGADO = List.of(EstadoPartido.FINALIZADO,
+            EstadoPartido.WALKOVER, EstadoPartido.RETIRO);
 
     public void actualizarRanking(Partido partido) {
 
@@ -132,20 +135,29 @@ public class RankingService {
 
         entradas.sort(ORDEN_RANKING);
 
+        boolean incluirTorneosJugados = categoriaId != null || genero != null;
+        Map<String, Integer> conteoTorneos = incluirTorneosJugados ? construirConteoTorneos(entradas) : Map.of();
+
         List<RankingResponse> respuestas = new ArrayList<>();
+        int posicionCompartida = 0;
+        Integer puntosPrevios = null;
         for (RankingEntry e : entradas) {
             Jugador jugador = obtenerJugadorActivo(e);
             if (jugador == null)
                 continue;
+            if (puntosPrevios == null || e.getPuntosTotales() != puntosPrevios) {
+                posicionCompartida = respuestas.size() + 1;
+                puntosPrevios = e.getPuntosTotales();
+            }
             respuestas.add(RankingResponse.builder()
-                    .posicion(respuestas.size() + 1)
+                    .posicion(posicionCompartida)
                     .jugadorId(jugador.getId())
                     .jugadorNombre(jugador.getNombre() + " " + jugador.getApellido())
                     .jugadorFotoUrl(jugador.getFotoUrl())
                     .categoriaId(e.getCategoria().getId())
                     .categoriaNombre(e.getCategoria().getNombre())
                     .puntosTotales(e.getPuntosTotales())
-                    .torneosJugados(contarTorneosJugados(jugador, e))
+                    .torneosJugados(conteoTorneos.getOrDefault(jugador.getId() + ":" + e.getCategoria().getId(), 0))
                     .victorias(e.getVictorias())
                     .derrotas(e.getDerrotas())
                     .tendencia(formatearTendencia(e))
@@ -225,14 +237,68 @@ public class RankingService {
                 .findFirst();
     }
 
-    private int contarTorneosJugados(Jugador jugador, RankingEntry entrada) {
-        Long jugadorId = jugador.getId();
-        Long categoriaId = entrada.getCategoria().getId();
-        if (entrada.getTemporada() != null) {
-            return (int) parejaRepository.contarTorneosJugadosPorTemporada(
-                    jugadorId, categoriaId, entrada.getTemporada().getId(), ESTADOS_TORNEO_JUGADO);
+    private Map<String, Integer> construirConteoTorneos(List<RankingEntry> entradas) {
+        Set<Long> categoriaIds = entradas.stream()
+                .map(entrada -> entrada.getCategoria().getId())
+                .collect(Collectors.toSet());
+        if (categoriaIds.isEmpty()) {
+            return Map.of();
         }
-        return (int) parejaRepository.contarTorneosJugados(jugadorId, categoriaId, ESTADOS_TORNEO_JUGADO);
+
+        Long temporadaId = entradas.stream()
+                .map(RankingEntry::getTemporada)
+                .filter(temporada -> temporada != null)
+                .map(Temporada::getId)
+                .findFirst()
+                .orElse(null);
+
+        List<Partido> partidos = temporadaId == null
+                ? partidoRepository.findJugadosPorCategorias(categoriaIds, ESTADOS_PARTIDO_JUGADO)
+                : partidoRepository.findJugadosPorCategoriasYTemporada(categoriaIds, temporadaId, ESTADOS_PARTIDO_JUGADO);
+
+        Map<String, Set<Long>> torneosPorClave = new HashMap<>();
+        for (Partido partido : partidos) {
+            Long torneoId = partido.getTorneo().getId();
+            acumularConteo(torneosPorClave, partido.getLocal(), categoriaIds, torneoId);
+            acumularConteo(torneosPorClave, partido.getVisitante(), categoriaIds, torneoId);
+        }
+
+        Map<String, Integer> conteo = new HashMap<>();
+        torneosPorClave.forEach((clave, torneos) -> conteo.put(clave, torneos.size()));
+        return conteo;
+    }
+
+    private void acumularConteo(Map<String, Set<Long>> mapa, Pareja pareja, Set<Long> categoriaIds, Long torneoId) {
+        if (pareja == null) {
+            return;
+        }
+        Long categoriaId;
+        try {
+            categoriaId = pareja.getCategoria() != null ? pareja.getCategoria().getId() : null;
+        } catch (EntityNotFoundException e) {
+            return;
+        }
+        if (categoriaId == null || !categoriaIds.contains(categoriaId)) {
+            return;
+        }
+        agregarTorneoJugador(mapa, pareja.getJugador1(), categoriaId, torneoId);
+        agregarTorneoJugador(mapa, pareja.getJugador2(), categoriaId, torneoId);
+    }
+
+    private void agregarTorneoJugador(Map<String, Set<Long>> mapa, Jugador jugador, Long categoriaId, Long torneoId) {
+        if (jugador == null) {
+            return;
+        }
+        Long jugadorId;
+        try {
+            jugadorId = jugador.getId();
+        } catch (EntityNotFoundException e) {
+            return;
+        }
+        if (jugadorId == null) {
+            return;
+        }
+        mapa.computeIfAbsent(jugadorId + ":" + categoriaId, clave -> new HashSet<>()).add(torneoId);
     }
 
     private void asignarPuntos(Jugador jugador, Categoria categoria, Torneo torneo,

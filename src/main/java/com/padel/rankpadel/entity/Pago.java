@@ -1,20 +1,18 @@
 package com.padel.rankpadel.entity;
 
-import java.time.LocalDate;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.time.LocalTime;
 
-import com.padel.rankpadel.enums.EstadoReserva;
+import com.padel.rankpadel.enums.ConceptoPago;
+import com.padel.rankpadel.enums.EstadoPago;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
-import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -28,33 +26,31 @@ import lombok.Setter;
 @NoArgsConstructor
 @Builder
 @Entity
-@Table(name = "reservas")
-public class Reserva {
+@Table(name = "pagos")
+public class Pago {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "cancha_id")
-    private Cancha cancha;
-
-    private LocalDate fecha;
-    private LocalTime horaInicio;
-    private LocalTime horaFin;
+    @Enumerated(EnumType.STRING)
+    private ConceptoPago concepto;
 
     @Enumerated(EnumType.STRING)
-    private EstadoReserva estado;
+    private EstadoPago estado;
+
+    private BigDecimal montoTotal;
+    private BigDecimal montoSenia;
+    private Integer porcentajeSenia;
+
+    private String referenciaExterna;
+    private String preferenciaId;
+
+    @Column(name = "pago_mercado_pago_id")
+    private String pagoMercadoPagoId;
 
     private String clienteNombre;
     private String clienteTelefono;
-    private String codigo;
     private LocalDateTime creadoEn;
-    private LocalDateTime confirmadoEn;
-    private LocalDateTime expiraEn;
-    private String claveSlot;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "pago_id")
-    private Pago pago;
+    private LocalDateTime pagadoEn;
 }

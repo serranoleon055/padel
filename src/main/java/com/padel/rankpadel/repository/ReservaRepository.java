@@ -16,4 +16,6 @@ public interface ReservaRepository extends JpaRepository<Reserva, Long> {
     List<Reserva> findByEstadoAndExpiraEnBefore(EstadoReserva estado, LocalDateTime momento);
 
     long countByClienteTelefonoAndEstado(String clienteTelefono, EstadoReserva estado);
+
+    List<Reserva> findByPagoId(Long pagoId);
 }

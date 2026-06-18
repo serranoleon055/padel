@@ -65,7 +65,7 @@ class ParejaServiceTest {
     void setUp() {
         categoria = Categoria.builder().id(7L).nombre("Cuarta").genero(Genero.MASCULINO).build();
         torneo = Torneo.builder()
-                .id(1L).estado(EstadoTorneo.INSCRIPCION).esMixto(false)
+                .id(1L).estado(EstadoTorneo.INSCRIPCION)
                 .categorias(List.of(categoria))
                 .build();
         jugador1 = Jugador.builder().id(10L).nombre("Juan").apellido("Perez").genero(Genero.MASCULINO).build();

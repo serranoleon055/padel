@@ -15,6 +15,7 @@ import com.padel.rankpadel.dto.request.LoteReservaRequest;
 import com.padel.rankpadel.dto.request.SolicitudReservaRequest;
 import com.padel.rankpadel.dto.response.ReservaResponse;
 import com.padel.rankpadel.entity.Cancha;
+import com.padel.rankpadel.entity.Pago;
 import com.padel.rankpadel.entity.Reserva;
 import com.padel.rankpadel.enums.EstadoReserva;
 import com.padel.rankpadel.exception.EstadoInvalidoException;
@@ -41,7 +42,7 @@ public class ReservaService {
         String telefono = request.getClienteTelefono().trim();
         validarTopePendientes(telefono, 1);
         Reserva reserva = crearReserva(cancha, request.getFecha(), request.getHoraInicio(),
-                request.getClienteNombre(), telefono);
+                request.getClienteNombre(), telefono, null, EXPIRACION_MINUTOS);
         return aResponse(reserva);
     }
 
@@ -55,8 +56,23 @@ public class ReservaService {
         List<ReservaResponse> creadas = new ArrayList<>();
         for (LocalTime horaInicio : horarios) {
             Reserva reserva = crearReserva(cancha, request.getFecha(), horaInicio,
-                    request.getClienteNombre(), telefono);
+                    request.getClienteNombre(), telefono, null, EXPIRACION_MINUTOS);
             creadas.add(aResponse(reserva));
+        }
+        return creadas;
+    }
+
+    @Transactional
+    public List<Reserva> crearReservasParaPago(LoteReservaRequest request, Pago pago, int expiracionMinutos) {
+        Cancha cancha = canchaParaReservar(request.getCanchaId());
+        String telefono = request.getClienteTelefono().trim();
+        List<LocalTime> horarios = request.getHorarios().stream().distinct().sorted().toList();
+        validarTopePendientes(telefono, horarios.size());
+
+        List<Reserva> creadas = new ArrayList<>();
+        for (LocalTime horaInicio : horarios) {
+            creadas.add(crearReserva(cancha, request.getFecha(), horaInicio,
+                    request.getClienteNombre(), telefono, pago, expiracionMinutos));
         }
         return creadas;
     }
@@ -80,7 +96,7 @@ public class ReservaService {
     }
 
     private Reserva crearReserva(Cancha cancha, LocalDate fecha, LocalTime horaInicio,
-            String clienteNombre, String telefono) {
+            String clienteNombre, String telefono, Pago pago, int expiracionMinutos) {
         LocalTime horaFin = horaInicio.plusMinutes(disponibilidadCanchaService.duracionSlot(cancha.getId()));
 
         if (disponibilidadCanchaService.inicioReal(cancha.getId(), fecha, horaInicio).isBefore(LocalDateTime.now())) {
@@ -101,8 +117,9 @@ public class ReservaService {
                 .clienteTelefono(telefono)
                 .codigo(generarCodigo())
                 .creadoEn(ahora)
-                .expiraEn(ahora.plusMinutes(EXPIRACION_MINUTOS))
+                .expiraEn(ahora.plusMinutes(expiracionMinutos))
                 .claveSlot(claveSlot(cancha.getId(), fecha, horaInicio))
+                .pago(pago)
                 .build();
 
         try {
@@ -184,6 +201,7 @@ public class ReservaService {
     }
 
     private ReservaResponse aResponse(Reserva reserva) {
+        Pago pago = reserva.getPago();
         return ReservaResponse.builder()
                 .id(reserva.getId())
                 .canchaId(reserva.getCancha() != null ? reserva.getCancha().getId() : null)
@@ -195,6 +213,9 @@ public class ReservaService {
                 .clienteNombre(reserva.getClienteNombre())
                 .clienteTelefono(reserva.getClienteTelefono())
                 .codigo(reserva.getCodigo())
+                .estadoPago(pago != null && pago.getEstado() != null ? pago.getEstado().name() : null)
+                .montoSenia(pago != null ? pago.getMontoSenia() : null)
+                .montoTotal(pago != null ? pago.getMontoTotal() : null)
                 .build();
     }
 }

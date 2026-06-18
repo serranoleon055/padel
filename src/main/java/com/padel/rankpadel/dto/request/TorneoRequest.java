@@ -1,5 +1,6 @@
 package com.padel.rankpadel.dto.request;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -31,6 +32,10 @@ public class TorneoRequest {
     private String imagenUrl;
     private Integer cupoMaximoParejas;
 
+    private BigDecimal costoInscripcionJugador;
+    private BigDecimal premioAcumulado;
+    private Integer seniaPorcentaje;
+
     @Builder.Default
     private Map<Long, Integer> cuposPorCategoria = new HashMap<>();
 
@@ -41,7 +46,6 @@ public class TorneoRequest {
     private LocalDate fechaInicio;
 
     private LocalDate fechaFin;
-    private boolean esMixto;
 
     private boolean sumaPuntosRanking;
 

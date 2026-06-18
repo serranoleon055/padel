@@ -3,6 +3,7 @@ package com.padel.rankpadel.dto.request;
 import java.time.LocalDate;
 
 import com.padel.rankpadel.enums.Genero;
+import com.padel.rankpadel.enums.PosicionJuego;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -23,4 +24,5 @@ public class IntegranteInscripcionRequest {
     private Genero genero;
     private String telefono;
     private LocalDate fechaNacimiento;
+    private PosicionJuego posicionJuego;
 }

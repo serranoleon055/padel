@@ -32,8 +32,11 @@ public class ParejaMapper {
                 .id(pareja.getId())
                 .esCabezaDeSerie(pareja.isEsCabezaDeSerie())
                 .estado(pareja.getEstado())
+                .jugador1Id(getJugadorId(pareja.getJugador1()))
+                .jugador2Id(getJugadorId(pareja.getJugador2()))
                 .jugador1Nombre(getJugador1Nombre(pareja))
                 .jugador2Nombre(getJugador2Nombre(pareja))
+                .categoriaId(getParejaCategoriaId(pareja))
                 .categoriaNombre(getParejaCategoriaNombre(pareja))
                 .build();
 
@@ -63,6 +66,22 @@ public class ParejaMapper {
     private String getParejaCategoriaNombre(Pareja pareja) {
         try {
             return pareja.getCategoria() != null ? pareja.getCategoria().getNombre() : null;
+        } catch (jakarta.persistence.EntityNotFoundException e) {
+            return null;
+        }
+    }
+
+    private Long getJugadorId(Jugador jugador) {
+        try {
+            return jugador != null ? jugador.getId() : null;
+        } catch (jakarta.persistence.EntityNotFoundException e) {
+            return null;
+        }
+    }
+
+    private Long getParejaCategoriaId(Pareja pareja) {
+        try {
+            return pareja.getCategoria() != null ? pareja.getCategoria().getId() : null;
         } catch (jakarta.persistence.EntityNotFoundException e) {
             return null;
         }

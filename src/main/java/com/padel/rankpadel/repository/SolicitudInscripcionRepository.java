@@ -12,4 +12,8 @@ public interface SolicitudInscripcionRepository extends JpaRepository<SolicitudI
     List<SolicitudInscripcion> findByTorneoId(Long torneoId);
 
     List<SolicitudInscripcion> findByTorneoIdAndEstado(Long torneoId, EstadoSolicitud estado);
+
+    SolicitudInscripcion findByPagoId(Long pagoId);
+
+    long countByTorneoIdAndCategoriaIdAndPagadaTrueAndEstado(Long torneoId, Long categoriaId, EstadoSolicitud estado);
 }

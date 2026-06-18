@@ -288,6 +288,15 @@ public class TorneoController {
                 return ResponseEntity.noContent().build();
         }
 
+        @Operation(summary = "Editar pareja del torneo", description = "Requiere JWT. Solo en estado INSCRIPCION.")
+        @PutMapping("/{id}/parejas/{parejaId}")
+        public ResponseEntity<ParejaResponse> editarPareja(
+                        @Parameter(description = "ID del torneo") @PathVariable Long id,
+                        @Parameter(description = "ID de la pareja") @PathVariable Long parejaId,
+                        @Valid @RequestBody ParejaRequest parejaRequest) {
+                return ResponseEntity.ok(parejaService.editar(id, parejaId, parejaRequest));
+        }
+
         @SecurityRequirements({})
         @Operation(summary = "Calendario de partidos programados del torneo", description = "Devuelve los partidos con fecha/hora programada pendientes de jugar, ordenados cronológicamente.")
         @GetMapping("/{id}/calendario")

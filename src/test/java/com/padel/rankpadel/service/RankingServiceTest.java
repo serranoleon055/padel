@@ -22,6 +22,7 @@ import com.padel.rankpadel.entity.RankingEntry;
 import com.padel.rankpadel.enums.Genero;
 import com.padel.rankpadel.repository.ConfiguracionPuntosRepository;
 import com.padel.rankpadel.repository.ParejaRepository;
+import com.padel.rankpadel.repository.PartidoRepository;
 import com.padel.rankpadel.repository.RankingEntryRepository;
 import com.padel.rankpadel.repository.TemporadaRepository;
 
@@ -37,6 +38,9 @@ class RankingServiceTest {
 
     @Mock
     private ParejaRepository parejaRepository;
+
+    @Mock
+    private PartidoRepository partidoRepository;
 
     @Mock
     private TemporadaRepository temporadaRepository;

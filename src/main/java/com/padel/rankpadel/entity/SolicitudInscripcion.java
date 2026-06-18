@@ -5,6 +5,7 @@ import java.time.LocalDateTime;
 
 import com.padel.rankpadel.enums.EstadoSolicitud;
 import com.padel.rankpadel.enums.Genero;
+import com.padel.rankpadel.enums.PosicionJuego;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -50,6 +51,13 @@ public class SolicitudInscripcion {
     private String telefonoContacto;
     private LocalDateTime creadoEn;
 
+    @Builder.Default
+    private boolean pagada = false;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "pago_id")
+    private Pago pago;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "jugador1_id")
     private Jugador jugador1;
@@ -65,6 +73,9 @@ public class SolicitudInscripcion {
     private String jugador1Telefono;
     @Column(name = "jugador1_fecha_nacimiento")
     private LocalDate jugador1FechaNacimiento;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "jugador1_posicion_juego")
+    private PosicionJuego jugador1PosicionJuego;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "jugador2_id")
@@ -81,4 +92,7 @@ public class SolicitudInscripcion {
     private String jugador2Telefono;
     @Column(name = "jugador2_fecha_nacimiento")
     private LocalDate jugador2FechaNacimiento;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "jugador2_posicion_juego")
+    private PosicionJuego jugador2PosicionJuego;
 }

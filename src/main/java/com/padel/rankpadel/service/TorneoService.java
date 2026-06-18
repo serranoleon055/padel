@@ -133,34 +133,21 @@ public class TorneoService {
         Torneo torneoExistente = torneoRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Torneo", id));
 
-        if (!torneoExistente.getEstado().equals(EstadoTorneo.BORRADOR)) {
-            throw new EstadoInvalidoException("Solo se puede editar un torneo en estado BORRADOR");
-        }
-
         torneoExistente.setNombre(torneoRequest.getNombre());
-        torneoExistente.setFormato(torneoRequest.getFormato());
+        torneoExistente.setDescripcion(torneoRequest.getDescripcion());
+        torneoExistente.setImagenUrl(torneoRequest.getImagenUrl());
+        torneoExistente.setCostoInscripcionJugador(torneoRequest.getCostoInscripcionJugador());
+        torneoExistente.setPremioAcumulado(torneoRequest.getPremioAcumulado());
+        torneoExistente.setSeniaPorcentaje(torneoRequest.getSeniaPorcentaje());
         torneoExistente.setFechaInicio(torneoRequest.getFechaInicio());
         torneoExistente.setFechaFin(torneoRequest.getFechaFin());
-        torneoExistente.setEsMixto(torneoRequest.isEsMixto());
-        torneoExistente.setSumaPuntosRanking(torneoRequest.isSumaPuntosRanking());
-        torneoExistente.setCantidadParejasObjetivo(torneoRequest.getCantidadParejasObjetivo());
-        torneoExistente.setCantidadGrupos(torneoRequest.getCantidadGrupos());
-        torneoExistente.setParejasPorGrupo(torneoRequest.getParejasPorGrupo());
-        torneoExistente.setAvanzanPorGrupo(torneoRequest.getAvanzanPorGrupo());
-        torneoExistente.setIncluyeFaseGrupos(torneoRequest.isIncluyeFaseGrupos());
-        torneoExistente.setIncluyeEliminacion(torneoRequest.isIncluyeEliminacion());
-        torneoExistente.setMejorDeSets(torneoRequest.getMejorDeSets() != null ? torneoRequest.getMejorDeSets() : 3);
-        torneoExistente.setTipoSorteo(torneoRequest.getTipoSorteo());
-        torneoExistente.setCupoMaximoParejas(torneoRequest.getCupoMaximoParejas());
-        torneoExistente.setCuposPorCategoria(torneoRequest.getCuposPorCategoria() != null
-                ? new java.util.HashMap<>(torneoRequest.getCuposPorCategoria())
-                : new java.util.HashMap<>());
-        aplicarPlantillaFormatoSiCorresponde(torneoExistente, torneoRequest.getPlantillaFormatoId());
 
         if (torneoRequest.getLugarId() != null) {
             Lugar lugar = lugarRepository.findById(torneoRequest.getLugarId())
                     .orElseThrow(() -> new ResourceNotFoundException("Lugar", torneoRequest.getLugarId()));
             torneoExistente.setLugar(lugar);
+        } else {
+            torneoExistente.setLugar(null);
         }
         if (torneoRequest.getTemporadaId() != null) {
             Temporada temporada = temporadaRepository.findById(torneoRequest.getTemporadaId())
@@ -171,9 +158,27 @@ public class TorneoService {
             torneoExistente.setTemporada(null);
         }
 
-        if (torneoRequest.getConfiguracionPuntos() != null || torneoRequest.getPlantillaPuntosId() != null) {
-            configuracionPuntosRepository.deleteAll(configuracionPuntosRepository.findByTorneoIdOrderByOrden(id));
-            copiarConfiguracionPuntos(torneoExistente, torneoRequest);
+        if (torneoExistente.getEstado().equals(EstadoTorneo.BORRADOR)) {
+            torneoExistente.setFormato(torneoRequest.getFormato());
+            torneoExistente.setSumaPuntosRanking(torneoRequest.isSumaPuntosRanking());
+            torneoExistente.setCantidadParejasObjetivo(torneoRequest.getCantidadParejasObjetivo());
+            torneoExistente.setCantidadGrupos(torneoRequest.getCantidadGrupos());
+            torneoExistente.setParejasPorGrupo(torneoRequest.getParejasPorGrupo());
+            torneoExistente.setAvanzanPorGrupo(torneoRequest.getAvanzanPorGrupo());
+            torneoExistente.setIncluyeFaseGrupos(torneoRequest.isIncluyeFaseGrupos());
+            torneoExistente.setIncluyeEliminacion(torneoRequest.isIncluyeEliminacion());
+            torneoExistente.setMejorDeSets(torneoRequest.getMejorDeSets() != null ? torneoRequest.getMejorDeSets() : 3);
+            torneoExistente.setTipoSorteo(torneoRequest.getTipoSorteo());
+            torneoExistente.setCupoMaximoParejas(torneoRequest.getCupoMaximoParejas());
+            torneoExistente.setCuposPorCategoria(torneoRequest.getCuposPorCategoria() != null
+                    ? new java.util.HashMap<>(torneoRequest.getCuposPorCategoria())
+                    : new java.util.HashMap<>());
+            aplicarPlantillaFormatoSiCorresponde(torneoExistente, torneoRequest.getPlantillaFormatoId());
+
+            if (torneoRequest.getConfiguracionPuntos() != null || torneoRequest.getPlantillaPuntosId() != null) {
+                configuracionPuntosRepository.deleteAll(configuracionPuntosRepository.findByTorneoIdOrderByOrden(id));
+                copiarConfiguracionPuntos(torneoExistente, torneoRequest);
+            }
         }
 
         torneoRepository.save(torneoExistente);

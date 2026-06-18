@@ -1,5 +1,6 @@
 package com.padel.rankpadel.dto.response;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -26,13 +27,15 @@ public class TorneoResponse {
     private String descripcion;
     private String imagenUrl;
     private Integer cupoMaximoParejas;
+    private BigDecimal costoInscripcionJugador;
+    private BigDecimal premioAcumulado;
+    private Integer seniaPorcentaje;
     private Map<Long, Integer> cuposPorCategoria;
     private Map<Long, Long> parejasPorCategoria;
     private FormatoTorneo formato;
     private EstadoTorneo estado;
     private LocalDate fechaInicio;
     private LocalDate fechaFin;
-    private boolean esMixto;
     private boolean sumaPuntosRanking;
     private Long plantillaFormatoId;
     private String plantillaFormatoNombre;

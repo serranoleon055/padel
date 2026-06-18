@@ -263,39 +263,54 @@ class TorneoServiceTest {
         }
 
         @Test
-        @DisplayName("Torneo en INSCRIPCION no permite edición")
-        void actualizar_torneoEnInscripcion_lanzaExcepcion() {
+        @DisplayName("Torneo en INSCRIPCION edita básicos sin tocar la estructura")
+        void actualizar_torneoEnInscripcion_editaBasicos() {
             torneoBase.setEstado(EstadoTorneo.INSCRIPCION);
             when(torneoRepository.findById(1L)).thenReturn(Optional.of(torneoBase));
+            when(torneoMapper.torneoToResponse(torneoBase)).thenReturn(torneoResponseBase);
 
-            assertThrows(EstadoInvalidoException.class,
-                    () -> torneoService.actualizar(1L, requestActualizacion));
+            torneoService.actualizar(1L, requestEstructuraDistinta());
 
-            verify(torneoRepository, never()).save(any());
+            assertThat(torneoBase.getNombre()).isEqualTo("Torneo Verano Actualizado");
+            assertThat(torneoBase.getFormato()).isEqualTo(FormatoTorneo.ELIMINACION_DIRECTA);
+            verify(torneoRepository).save(torneoBase);
         }
 
         @Test
-        @DisplayName("Torneo en EN_CURSO no permite edición")
-        void actualizar_torneoEnCurso_lanzaExcepcion() {
+        @DisplayName("Torneo en EN_CURSO edita básicos sin tocar la estructura")
+        void actualizar_torneoEnCurso_editaBasicos() {
             torneoBase.setEstado(EstadoTorneo.EN_CURSO);
             when(torneoRepository.findById(1L)).thenReturn(Optional.of(torneoBase));
+            when(torneoMapper.torneoToResponse(torneoBase)).thenReturn(torneoResponseBase);
 
-            assertThrows(EstadoInvalidoException.class,
-                    () -> torneoService.actualizar(1L, requestActualizacion));
+            torneoService.actualizar(1L, requestEstructuraDistinta());
 
-            verify(torneoRepository, never()).save(any());
+            assertThat(torneoBase.getNombre()).isEqualTo("Torneo Verano Actualizado");
+            assertThat(torneoBase.getFormato()).isEqualTo(FormatoTorneo.ELIMINACION_DIRECTA);
+            verify(torneoRepository).save(torneoBase);
         }
 
         @Test
-        @DisplayName("Torneo en FINALIZADO no permite edición")
-        void actualizar_torneoFinalizado_lanzaExcepcion() {
+        @DisplayName("Torneo en FINALIZADO edita básicos sin tocar la estructura")
+        void actualizar_torneoFinalizado_editaBasicos() {
             torneoBase.setEstado(EstadoTorneo.FINALIZADO);
             when(torneoRepository.findById(1L)).thenReturn(Optional.of(torneoBase));
+            when(torneoMapper.torneoToResponse(torneoBase)).thenReturn(torneoResponseBase);
 
-            assertThrows(EstadoInvalidoException.class,
-                    () -> torneoService.actualizar(1L, requestActualizacion));
+            torneoService.actualizar(1L, requestEstructuraDistinta());
 
-            verify(torneoRepository, never()).save(any());
+            assertThat(torneoBase.getNombre()).isEqualTo("Torneo Verano Actualizado");
+            assertThat(torneoBase.getFormato()).isEqualTo(FormatoTorneo.ELIMINACION_DIRECTA);
+            verify(torneoRepository).save(torneoBase);
+        }
+
+        private TorneoRequest requestEstructuraDistinta() {
+            return TorneoRequest.builder()
+                    .nombre("Torneo Verano Actualizado")
+                    .formato(FormatoTorneo.LIGA)
+                    .fechaInicio(LocalDate.of(2025, 12, 5))
+                    .tipoSorteo(TipoSorteo.ALEATORIO)
+                    .build();
         }
 
         @Test

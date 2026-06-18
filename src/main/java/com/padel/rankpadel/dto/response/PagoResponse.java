@@ -13,15 +13,11 @@ import lombok.Setter;
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-public class CanchaResponse {
+public class PagoResponse {
 
     private Long id;
-    private String nombre;
-    private String descripcion;
-    private boolean activo;
-    private Long lugarId;
-    private String lugarNombre;
-    private BigDecimal precioPorHora;
-    private Integer seniaPorcentaje;
-
+    private String concepto;
+    private String estado;
+    private BigDecimal montoTotal;
+    private BigDecimal montoSenia;
 }

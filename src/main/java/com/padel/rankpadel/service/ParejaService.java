@@ -85,7 +85,7 @@ public class ParejaService {
             throw new EstadoInvalidoException("Un jugador no puede formar pareja consigo mismo");
         }
 
-        validarGeneroPareja(jugador1, jugador2, categoria, torneo.isEsMixto());
+        validarGeneroPareja(jugador1, jugador2, categoria);
 
         if (parejaRepository.jugadorYaInscriptoEnCategoria(torneoId, categoria.getId(), jugador1.getId())) {
             throw new EstadoInvalidoException("El jugador 1 ya está inscripto en esta categoría");
@@ -101,7 +101,7 @@ public class ParejaService {
         return parejaDTO;
     }
 
-    private void validarGeneroPareja(Jugador j1, Jugador j2, Categoria categoria, boolean esMixto) {
+    private void validarGeneroPareja(Jugador j1, Jugador j2, Categoria categoria) {
         Genero g1 = j1.getGenero();
         Genero g2 = j2.getGenero();
 
@@ -109,23 +109,62 @@ public class ParejaService {
             throw new EstadoInvalidoException("Ambos jugadores deben tener un género asignado");
         }
 
-        if (esMixto) {
-            boolean esParejaMixta = (g1 == Genero.MASCULINO && g2 == Genero.FEMENINO)
-                    || (g1 == Genero.FEMENINO && g2 == Genero.MASCULINO);
-            if (!esParejaMixta) {
-                throw new EstadoInvalidoException(
-                        "En un torneo mixto cada pareja debe estar formada por un jugador masculino y uno femenino");
-            }
-        } else {
-            if (g1 != g2) {
-                throw new EstadoInvalidoException(
-                        "Ambos jugadores deben ser del mismo género para la categoría '" + categoria.getNombre() + "'");
-            }
-            if (g1 != categoria.getGenero()) {
-                throw new EstadoInvalidoException(
-                        "Los jugadores no coinciden con el género de la categoría '" + categoria.getNombre() + "' (" + categoria.getGenero() + ")");
-            }
+        if (g1 != g2) {
+            throw new EstadoInvalidoException(
+                    "Ambos jugadores deben ser del mismo género para la categoría '" + categoria.getNombre() + "'");
         }
+        if (g1 != categoria.getGenero()) {
+            throw new EstadoInvalidoException(
+                    "Los jugadores no coinciden con el género de la categoría '" + categoria.getNombre() + "' (" + categoria.getGenero() + ")");
+        }
+    }
+
+    @Transactional
+    public ParejaResponse editar(Long torneoId, Long parejaId, ParejaRequest request) {
+        Torneo torneo = torneoRepository.findById(torneoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Torneo", torneoId));
+        if (!torneo.getEstado().equals(EstadoTorneo.INSCRIPCION)) {
+            throw new EstadoInvalidoException("Solo se pueden editar parejas en estado INSCRIPCION");
+        }
+
+        Pareja pareja = parejaRepository.findById(parejaId)
+                .orElseThrow(() -> new ResourceNotFoundException("Pareja", parejaId));
+        if (!pareja.getTorneo().getId().equals(torneoId)) {
+            throw new EstadoInvalidoException("La pareja no pertenece al torneo indicado");
+        }
+
+        Categoria categoria = categoriaRepository.findById(request.getCategoriaId())
+                .orElseThrow(() -> new ResourceNotFoundException("Categoria", request.getCategoriaId()));
+        boolean categoriaActiva = torneo.getCategorias().stream()
+                .anyMatch(c -> c.getId().equals(categoria.getId()));
+        if (!categoriaActiva) {
+            throw new EstadoInvalidoException("La categoría no está activa en este torneo");
+        }
+
+        Jugador jugador1 = jugadorRepository.findById(request.getJugador1Id())
+                .orElseThrow(() -> new ResourceNotFoundException("Jugador 1", request.getJugador1Id()));
+        Jugador jugador2 = jugadorRepository.findById(request.getJugador2Id())
+                .orElseThrow(() -> new ResourceNotFoundException("Jugador 2", request.getJugador2Id()));
+        if (jugador1.getId().equals(jugador2.getId())) {
+            throw new EstadoInvalidoException("Un jugador no puede formar pareja consigo mismo");
+        }
+
+        validarGeneroPareja(jugador1, jugador2, categoria);
+
+        if (parejaRepository.jugadorYaInscriptoEnCategoriaExcluyendo(torneoId, categoria.getId(), jugador1.getId(), parejaId)) {
+            throw new EstadoInvalidoException("El jugador 1 ya está inscripto en esta categoría");
+        }
+        if (parejaRepository.jugadorYaInscriptoEnCategoriaExcluyendo(torneoId, categoria.getId(), jugador2.getId(), parejaId)) {
+            throw new EstadoInvalidoException("El jugador 2 ya está inscripto en esta categoría");
+        }
+
+        pareja.setJugador1(jugador1);
+        pareja.setJugador2(jugador2);
+        pareja.setCategoria(categoria);
+        pareja.setEsCabezaDeSerie(request.isEsCabezaDeSerie());
+        parejaRepository.save(pareja);
+
+        return parejaMapper.parejaToResponse(pareja);
     }
 
     @Transactional

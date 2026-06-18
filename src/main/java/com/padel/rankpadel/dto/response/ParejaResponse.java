@@ -16,8 +16,11 @@ import lombok.Setter;
 public class ParejaResponse {
 
     private Long id;
+    private Long jugador1Id;
+    private Long jugador2Id;
     private String jugador1Nombre;
     private String jugador2Nombre;
+    private Long categoriaId;
     private String categoriaNombre;
     private boolean esCabezaDeSerie;
     private EstadoPareja estado;

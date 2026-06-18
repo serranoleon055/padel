@@ -1,5 +1,6 @@
 package com.padel.rankpadel.dto.response;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
 
@@ -26,4 +27,7 @@ public class ReservaResponse {
     private String clienteNombre;
     private String clienteTelefono;
     private String codigo;
+    private String estadoPago;
+    private BigDecimal montoSenia;
+    private BigDecimal montoTotal;
 }

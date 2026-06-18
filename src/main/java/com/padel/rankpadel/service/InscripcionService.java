@@ -17,6 +17,7 @@ import com.padel.rankpadel.dto.response.JugadorCandidatoResponse;
 import com.padel.rankpadel.dto.response.SolicitudInscripcionResponse;
 import com.padel.rankpadel.entity.Categoria;
 import com.padel.rankpadel.entity.Jugador;
+import com.padel.rankpadel.entity.Pago;
 import com.padel.rankpadel.entity.SolicitudInscripcion;
 import com.padel.rankpadel.entity.Torneo;
 import com.padel.rankpadel.enums.EstadoSolicitud;
@@ -46,6 +47,20 @@ public class InscripcionService {
 
     @Transactional
     public SolicitudInscripcionResponse crear(Long torneoId, SolicitudInscripcionRequest request) {
+        SolicitudInscripcion solicitud = construirSolicitud(torneoId, request);
+        solicitudInscripcionRepository.save(solicitud);
+        return aResponse(solicitud);
+    }
+
+    @Transactional
+    public SolicitudInscripcion crearParaPago(Long torneoId, SolicitudInscripcionRequest request, Pago pago) {
+        SolicitudInscripcion solicitud = construirSolicitud(torneoId, request);
+        solicitud.setPago(pago);
+        solicitudInscripcionRepository.save(solicitud);
+        return solicitud;
+    }
+
+    private SolicitudInscripcion construirSolicitud(Long torneoId, SolicitudInscripcionRequest request) {
         Torneo torneo = torneoRepository.findById(torneoId)
                 .orElseThrow(() -> new ResourceNotFoundException("Torneo", torneoId));
         if (!torneo.getEstado().equals(EstadoTorneo.INSCRIPCION)) {
@@ -65,7 +80,10 @@ public class InscripcionService {
                 : null;
         if (cupoCategoria != null && cupoCategoria > 0) {
             long inscriptas = parejaRepository.countByTorneoIdAndCategoriaId(torneoId, categoria.getId());
-            if (inscriptas >= cupoCategoria) {
+            long pagadasPendientes = solicitudInscripcionRepository
+                    .countByTorneoIdAndCategoriaIdAndPagadaTrueAndEstado(torneoId, categoria.getId(),
+                            EstadoSolicitud.PENDIENTE);
+            if (inscriptas + pagadasPendientes >= cupoCategoria) {
                 throw new EstadoInvalidoException(
                         "La categoría '" + categoria.getNombre() + "' ya cubrió su cupo de " + cupoCategoria
                                 + " parejas. No se aceptan más inscripciones.");
@@ -83,8 +101,7 @@ public class InscripcionService {
         aplicarIntegrante(solicitud, request.getJugador1(), 1);
         aplicarIntegrante(solicitud, request.getJugador2(), 2);
 
-        solicitudInscripcionRepository.save(solicitud);
-        return aResponse(solicitud);
+        return solicitud;
     }
 
     @Transactional(readOnly = true)
@@ -166,12 +183,14 @@ public class InscripcionService {
             solicitud.setJugador1Genero(data.getGenero());
             solicitud.setJugador1Telefono(data.getTelefono());
             solicitud.setJugador1FechaNacimiento(data.getFechaNacimiento());
+            solicitud.setJugador1PosicionJuego(data.getPosicionJuego());
         } else {
             solicitud.setJugador2Nombre(data.getNombre().trim());
             solicitud.setJugador2Apellido(data.getApellido().trim());
             solicitud.setJugador2Genero(data.getGenero());
             solicitud.setJugador2Telefono(data.getTelefono());
             solicitud.setJugador2FechaNacimiento(data.getFechaNacimiento());
+            solicitud.setJugador2PosicionJuego(data.getPosicionJuego());
         }
     }
 
@@ -190,6 +209,7 @@ public class InscripcionService {
                 .genero(numero == 1 ? solicitud.getJugador1Genero() : solicitud.getJugador2Genero())
                 .telefono(numero == 1 ? solicitud.getJugador1Telefono() : solicitud.getJugador2Telefono())
                 .fechaNacimiento(numero == 1 ? solicitud.getJugador1FechaNacimiento() : solicitud.getJugador2FechaNacimiento())
+                .posicionJuego(numero == 1 ? solicitud.getJugador1PosicionJuego() : solicitud.getJugador2PosicionJuego())
                 .categoria(solicitud.getCategoria())
                 .fechaRegistro(LocalDate.now())
                 .activo(true)
@@ -213,6 +233,11 @@ public class InscripcionService {
                 .jugador2EsNuevo(jugador2EsNuevo)
                 .jugador1Candidatos(jugador1EsNuevo ? buscarCandidatos(solicitud, 1) : Collections.emptyList())
                 .jugador2Candidatos(jugador2EsNuevo ? buscarCandidatos(solicitud, 2) : Collections.emptyList())
+                .pagada(solicitud.isPagada())
+                .estadoPago(solicitud.getPago() != null && solicitud.getPago().getEstado() != null
+                        ? solicitud.getPago().getEstado().name()
+                        : null)
+                .montoSenia(solicitud.getPago() != null ? solicitud.getPago().getMontoSenia() : null)
                 .build();
     }
 

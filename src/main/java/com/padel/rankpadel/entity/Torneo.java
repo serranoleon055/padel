@@ -1,5 +1,6 @@
 package com.padel.rankpadel.entity;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -51,6 +52,10 @@ public class Torneo {
     private String imagenUrl;
     private Integer cupoMaximoParejas;
 
+    private BigDecimal costoInscripcionJugador;
+    private BigDecimal premioAcumulado;
+    private Integer seniaPorcentaje;
+
     @Builder.Default
     @ElementCollection(fetch = FetchType.LAZY)
     @CollectionTable(name = "torneo_cupos_categoria", joinColumns = @JoinColumn(name = "torneo_id"))
@@ -66,7 +71,6 @@ public class Torneo {
 
     private LocalDate fechaInicio;
     private LocalDate fechaFin;
-    private boolean esMixto;
     private boolean sumaPuntosRanking;
     @Builder.Default
     private boolean activo = true;

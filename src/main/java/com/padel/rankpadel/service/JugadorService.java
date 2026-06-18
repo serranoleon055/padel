@@ -174,11 +174,7 @@ public class JugadorService {
 
         List<Partido> partidos = partidoRepository.findPartidosFinalizadosByJugadorId(id);
 
-        List<Pareja> parejas = parejaRepository.findAll().stream()
-                .filter(p -> (p.getJugador1() != null && p.getJugador1().getId().equals(id))
-                        || (p.getJugador2() != null && p.getJugador2().getId().equals(id)))
-                .filter(p -> p.getTorneo() != null && p.getTorneo().isActivo())
-                .collect(Collectors.toList());
+        List<Pareja> parejas = parejaRepository.findByJugador(id);
 
         Map<Long, JugadorHistorialResponse.TorneoHistorialItem> torneoMap = new LinkedHashMap<>();
         for (Pareja pareja : parejas) {
@@ -191,6 +187,8 @@ public class JugadorService {
             List<Partido> partidosDelTorneo = partidos.stream()
                     .filter(p -> p.getTorneo() != null && p.getTorneo().getId().equals(torneoId))
                     .collect(Collectors.toList());
+
+            if (partidosDelTorneo.isEmpty()) continue;
 
             Map<String, ConfiguracionPuntos> configPorRonda = configuracionPuntosRepository
                     .findByTorneoIdOrderByOrden(torneoId).stream()
