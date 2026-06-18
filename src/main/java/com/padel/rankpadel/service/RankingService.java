@@ -225,7 +225,6 @@ public class RankingService {
                                 temporada.getId())
                         .orElseGet(() -> nuevaEntrada(jugador, pareja.getCategoria(), temporada));
             }
-            // Puntos del perdedor pueden ser negativos, pero el total nunca baja de 0.
             entrada.setPuntosTotales(Math.max(0, entrada.getPuntosTotales() + puntos));
             rankingEntryRepository.save(entrada);
         }
@@ -316,7 +315,6 @@ public class RankingService {
                     .orElse(nuevaEntrada(jugador, categoria, temporada));
         }
 
-        // Puntos del perdedor pueden ser negativos, pero el total nunca baja de 0.
         entrada.setPuntosTotales(Math.max(0, entrada.getPuntosTotales() + puntos));
         if (esGanador)
             entrada.setVictorias(entrada.getVictorias() + 1);

@@ -16,12 +16,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-/**
- * Campeón (y subcampeón) de una categoría de un torneo finalizado.
- * Fuente única de verdad para mostrar campeones, funcione el torneo por
- * eliminación (ganador de la final) o por liga/grupos (líder de la tabla),
- * casos en los que no existe un partido "Final".
- */
 @Getter
 @Setter
 @AllArgsConstructor

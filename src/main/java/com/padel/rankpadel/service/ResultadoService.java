@@ -429,8 +429,6 @@ public class ResultadoService {
                 torneoRepository.save(torneo);
                 rankingService.cerrarTorneo(torneo.getId());
             }
-            // La final de esta categoría ya se definió: registrar campeón aunque
-            // el torneo siga en curso para otras categorías.
             campeonService.recalcularCampeones(torneo);
             return;
         }

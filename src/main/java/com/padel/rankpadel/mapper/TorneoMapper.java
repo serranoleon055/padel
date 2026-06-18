@@ -51,10 +51,6 @@ public class TorneoMapper {
         return torneo;
     }
 
-    /**
-     * Sets por formato: si el request no especifica mejorDeSets, se usa 1 para
-     * MINITORNEO y 3 para el resto (liga, eliminación directa, torneo largo).
-     */
     public static int mejorDeSetsPorDefecto(Integer mejorDeSets, FormatoTorneo formato) {
         if (mejorDeSets != null) {
             return mejorDeSets;

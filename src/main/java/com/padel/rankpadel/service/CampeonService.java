@@ -30,11 +30,6 @@ import com.padel.rankpadel.util.PosicionGrupoOrdenador;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 
-/**
- * Determina y persiste el campeón/subcampeón de cada categoría de un torneo,
- * sirviendo de fuente única tanto para torneos por eliminación (ganador de la
- * final) como para ligas/grupos (líder de la tabla de posiciones).
- */
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -46,7 +41,6 @@ public class CampeonService {
     private final PartidoRepository partidoRepository;
     private final TorneoRepository torneoRepository;
 
-    /** Recalcula los campeones de todas las categorías de un torneo. */
     public void recalcularCampeones(Torneo torneo) {
         campeonTorneoRepository.deleteByTorneoId(torneo.getId());
         if (torneo.getCategorias() == null) {
@@ -66,7 +60,6 @@ public class CampeonService {
         campeonTorneoRepository.deleteByTorneoId(torneoId);
     }
 
-    /** Backfill: recalcula los campeones de todos los torneos finalizados activos. */
     public int recalcularTodosFinalizados() {
         List<Torneo> finalizados = torneoRepository.findByActivoTrue().stream()
                 .filter(t -> EstadoTorneo.FINALIZADO.equals(t.getEstado()))
