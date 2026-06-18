@@ -23,8 +23,8 @@ public class PlantillaPuntosRondaRequest {
     @Min(0)
     private Integer puntosGanador;
 
+    // Puede ser negativo para penalizar la derrota (el total del jugador se pisa en 0).
     @NotNull
-    @Min(0)
     private Integer puntosPerdedor;
 
     @NotNull
