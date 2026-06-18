@@ -38,6 +38,7 @@ public class PartidoMapper {
                                 .rondaId(partido.getRonda() != null ? partido.getRonda().getId() : null)
                                 .ronda(partido.getRonda() != null ? partido.getRonda().getNombre() : null)
                                 .rondaOrden(partido.getRonda() != null ? partido.getRonda().getOrden() : null)
+                                .jornada(partido.getJornada())
                                 .parejaLocalId(partido.getLocal() != null ? partido.getLocal().getId() : null)
                                 .parejaVisitanteId(partido.getVisitante() != null ? partido.getVisitante().getId() : null)
                                 .marcador(partido.getMarcador())

@@ -47,6 +47,8 @@ public class Partido {
 
     private Integer ordenLlave;
 
+    private Integer jornada;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "cancha_id")
     private Cancha cancha;

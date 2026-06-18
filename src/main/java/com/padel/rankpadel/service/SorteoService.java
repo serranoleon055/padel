@@ -251,17 +251,35 @@ public class SorteoService {
 
     private List<Partido> generarPartidosRoundRobin(List<Pareja> parejas, Grupo grupo, Torneo torneo) {
         List<Partido> partidos = new ArrayList<>();
-        for (int i = 0; i < parejas.size(); i++) {
-            for (int j = i + 1; j < parejas.size(); j++) {
-                partidos.add(Partido.builder()
-                        .torneo(torneo)
-                        .local(parejas.get(i))
-                        .visitante(parejas.get(j))
-                        .grupo(grupo)
-                        .estado(EstadoPartido.PENDIENTE)
-                        .fase(FasePartido.GRUPOS)
-                        .build());
+        if (parejas.size() < 2) {
+            return partidos;
+        }
+
+        List<Pareja> rueda = new ArrayList<>(parejas);
+        if (rueda.size() % 2 != 0) {
+            rueda.add(null);
+        }
+        int n = rueda.size();
+        int jornadas = n - 1;
+        int partidosPorJornada = n / 2;
+
+        for (int j = 0; j < jornadas; j++) {
+            for (int i = 0; i < partidosPorJornada; i++) {
+                Pareja local = rueda.get(i);
+                Pareja visitante = rueda.get(n - 1 - i);
+                if (local != null && visitante != null) {
+                    partidos.add(Partido.builder()
+                            .torneo(torneo)
+                            .local(local)
+                            .visitante(visitante)
+                            .grupo(grupo)
+                            .estado(EstadoPartido.PENDIENTE)
+                            .fase(FasePartido.GRUPOS)
+                            .jornada(j + 1)
+                            .build());
+                }
             }
+            rueda.add(1, rueda.remove(n - 1));
         }
         return partidos;
     }

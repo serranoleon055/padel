@@ -36,6 +36,7 @@ public class PartidoResponse {
     private Long rondaId;
     private String ronda;
     private Integer rondaOrden;
+    private Integer jornada;
     private Long parejaLocalId;
     private Long parejaVisitanteId;
     private String marcador;
