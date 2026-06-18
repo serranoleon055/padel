@@ -58,6 +58,9 @@ public class PagoService {
     @Value("${app.mercadopago.notification-url:}")
     private String notificationUrl;
 
+    @Value("${app.pagos.modo-demo:false}")
+    private boolean modoDemo;
+
     @Transactional
     public PagoCreadoResponse crearPagoReserva(LoteReservaRequest request) {
         Cancha cancha = canchaRepository.findById(request.getCanchaId())
@@ -191,6 +194,13 @@ public class PagoService {
     }
 
     private PagoCreadoResponse iniciarPreferencia(Pago pago, String titulo, String urlResultado) {
+        if (modoDemo) {
+            confirmarPagoAprobado(pago.getReferenciaExterna(), "DEMO");
+            return PagoCreadoResponse.builder()
+                    .pagoId(pago.getId())
+                    .initPoint(urlResultado)
+                    .build();
+        }
         MercadoPagoService.PreferenciaCreada preferencia = mercadoPagoService.crearPreferencia(
                 pago.getReferenciaExterna(), titulo, pago.getMontoSenia(),
                 urlResultado, urlResultado, urlResultado, notificationUrl);
