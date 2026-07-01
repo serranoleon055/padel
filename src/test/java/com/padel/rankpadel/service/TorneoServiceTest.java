@@ -36,7 +36,6 @@ import com.padel.rankpadel.exception.EstadoInvalidoException;
 import com.padel.rankpadel.exception.ResourceNotFoundException;
 import com.padel.rankpadel.mapper.TorneoMapper;
 import com.padel.rankpadel.repository.CategoriaRepository;
-import com.padel.rankpadel.repository.ConfiguracionPuntosRepository;
 import com.padel.rankpadel.repository.GrupoRepository;
 import com.padel.rankpadel.repository.LugarRepository;
 import com.padel.rankpadel.repository.ParejaRepository;
@@ -67,9 +66,6 @@ class TorneoServiceTest {
     private CategoriaRepository categoriaRepository;
 
     @Mock
-    private ConfiguracionPuntosRepository configuracionPuntosRepository;
-
-    @Mock
     private PlantillaFormatoRepository plantillaFormatoRepository;
 
     @Mock
@@ -93,6 +89,9 @@ class TorneoServiceTest {
     @Mock
     private ImageStorageService imageStorageService;
 
+    @Mock
+    private CampeonService campeonService;
+
     @InjectMocks
     private TorneoService torneoService;
 
@@ -104,6 +103,10 @@ class TorneoServiceTest {
         lenient().when(parejaRepository.countByTorneoId(any())).thenReturn(0L);
         lenient().when(partidoRepository.countByTorneoId(any())).thenReturn(0L);
         lenient().when(partidoRepository.countByTorneoIdAndEstado(any(), any())).thenReturn(0L);
+        lenient().when(lugarRepository.findById(any())).thenReturn(Optional.of(
+                com.padel.rankpadel.entity.Lugar.builder().id(9L).nombre("Sede").build()));
+        lenient().when(temporadaRepository.findById(any())).thenReturn(Optional.of(
+                com.padel.rankpadel.entity.Temporada.builder().id(5L).nombre("2026").activa(true).build()));
 
         torneoBase = Torneo.builder()
                 .id(1L)
@@ -246,6 +249,8 @@ class TorneoServiceTest {
                     .formato(FormatoTorneo.ELIMINACION_DIRECTA)
                     .fechaInicio(LocalDate.of(2025, 12, 5))
                     .tipoSorteo(TipoSorteo.ALEATORIO)
+                    .lugarId(9L)
+                    .temporadaId(5L)
                     .build();
         }
 
@@ -263,8 +268,8 @@ class TorneoServiceTest {
         }
 
         @Test
-        @DisplayName("Torneo en INSCRIPCION edita básicos sin tocar la estructura")
-        void actualizar_torneoEnInscripcion_editaBasicos() {
+        @DisplayName("Torneo en INSCRIPCION sí puede editar la estructura (formato)")
+        void actualizar_torneoEnInscripcion_editaEstructura() {
             torneoBase.setEstado(EstadoTorneo.INSCRIPCION);
             when(torneoRepository.findById(1L)).thenReturn(Optional.of(torneoBase));
             when(torneoMapper.torneoToResponse(torneoBase)).thenReturn(torneoResponseBase);
@@ -272,7 +277,7 @@ class TorneoServiceTest {
             torneoService.actualizar(1L, requestEstructuraDistinta());
 
             assertThat(torneoBase.getNombre()).isEqualTo("Torneo Verano Actualizado");
-            assertThat(torneoBase.getFormato()).isEqualTo(FormatoTorneo.ELIMINACION_DIRECTA);
+            assertThat(torneoBase.getFormato()).isEqualTo(FormatoTorneo.LIGA);
             verify(torneoRepository).save(torneoBase);
         }
 
@@ -310,6 +315,8 @@ class TorneoServiceTest {
                     .formato(FormatoTorneo.LIGA)
                     .fechaInicio(LocalDate.of(2025, 12, 5))
                     .tipoSorteo(TipoSorteo.ALEATORIO)
+                    .lugarId(9L)
+                    .temporadaId(5L)
                     .build();
         }
 
@@ -335,6 +342,8 @@ class TorneoServiceTest {
                     .formato(FormatoTorneo.ELIMINACION_DIRECTA)
                     .fechaInicio(LocalDate.of(2025, 12, 1))
                     .tipoSorteo(TipoSorteo.ALEATORIO)
+                    .lugarId(9L)
+                    .temporadaId(5L)
                     .build();
 
             Torneo torneoNuevo = Torneo.builder()
@@ -364,6 +373,8 @@ class TorneoServiceTest {
                     .fechaInicio(LocalDate.of(2025, 12, 1))
                     .tipoSorteo(TipoSorteo.ALEATORIO)
                     .plantillaFormatoId(5L)
+                    .lugarId(9L)
+                    .temporadaId(5L)
                     .build();
 
             Torneo torneoNuevo = Torneo.builder()
@@ -417,6 +428,8 @@ class TorneoServiceTest {
                     .fechaInicio(LocalDate.of(2025, 12, 1))
                     .tipoSorteo(TipoSorteo.ALEATORIO)
                     .plantillaPuntosId(7L)
+                    .lugarId(9L)
+                    .temporadaId(5L)
                     .build();
 
             Torneo torneoNuevo = Torneo.builder()
@@ -424,6 +437,8 @@ class TorneoServiceTest {
                     .formato(FormatoTorneo.MINITORNEO)
                     .fechaInicio(LocalDate.of(2025, 12, 1))
                     .tipoSorteo(TipoSorteo.ALEATORIO)
+                    .categorias(new java.util.ArrayList<>(List.of(
+                            com.padel.rankpadel.entity.Categoria.builder().id(1L).nombre("4ta").build())))
                     .build();
 
             PlantillaPuntos plantilla = PlantillaPuntos.builder()
@@ -454,7 +469,6 @@ class TorneoServiceTest {
             assertThat(torneoNuevo.getPlantillaPuntosId()).isEqualTo(7L);
             assertThat(torneoNuevo.getPlantillaPuntosNombre()).isEqualTo("Ranking estandar");
             assertThat(torneoNuevo.getConfiguracionPuntos()).hasSize(2);
-            verify(configuracionPuntosRepository).saveAll(any());
         }
 
         @Test
@@ -467,6 +481,8 @@ class TorneoServiceTest {
                     .formato(FormatoTorneo.MINITORNEO)
                     .fechaInicio(LocalDate.of(2025, 12, 1))
                     .tipoSorteo(TipoSorteo.ALEATORIO)
+                    .lugarId(9L)
+                    .temporadaId(5L)
                     .configuracionPuntos(List.of(ConfiguracionPuntosRequest.builder()
                             .nombreRonda("Final especial")
                             .puntosGanador(150)
@@ -475,7 +491,10 @@ class TorneoServiceTest {
                             .build()))
                     .build();
 
-            Torneo torneoNuevo = Torneo.builder().build();
+            Torneo torneoNuevo = Torneo.builder()
+                    .categorias(new java.util.ArrayList<>(List.of(
+                            com.padel.rankpadel.entity.Categoria.builder().id(1L).nombre("4ta").build())))
+                    .build();
 
             when(torneoMapper.requestToTorneo(any(), any(), any())).thenReturn(torneoNuevo);
             when(torneoRepository.save(any())).thenReturn(torneoNuevo);

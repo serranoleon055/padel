@@ -25,6 +25,10 @@ public interface JugadorRepository extends JpaRepository<Jugador, Long> {
 
     List<Jugador> findByActivoTrueAndGeneroAndNombreNormalizado(Genero genero, String nombreNormalizado);
 
+    boolean existsByActivoTrueAndNombreNormalizado(String nombreNormalizado);
+
+    boolean existsByActivoTrueAndNombreNormalizadoAndIdNot(String nombreNormalizado, Long id);
+
     @Query("SELECT j FROM Jugador j LEFT JOIN FETCH j.categoria WHERE j.activo = true")
     List<Jugador> findAllConCategoria();
 

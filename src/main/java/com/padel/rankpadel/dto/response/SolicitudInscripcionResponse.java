@@ -18,6 +18,7 @@ public class SolicitudInscripcionResponse {
 
     private Long id;
     private Long torneoId;
+    private String torneoNombre;
     private Long categoriaId;
     private String categoriaNombre;
     private String estado;

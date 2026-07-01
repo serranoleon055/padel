@@ -23,5 +23,6 @@ public class CanchaResponse {
     private String lugarNombre;
     private BigDecimal precioPorHora;
     private Integer seniaPorcentaje;
+    private boolean seniaObligatoria;
 
 }

@@ -17,7 +17,6 @@ public class HomeSummaryResponse {
     private long jugadoresRegistrados;
     private long partidosFinalizados;
     private long partidosEnVivo;
-    private long torneosTotales;
     private long categoriasActivas;
 
 }

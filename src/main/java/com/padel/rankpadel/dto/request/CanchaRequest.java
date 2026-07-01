@@ -24,4 +24,6 @@ public class CanchaRequest {
     private BigDecimal precioPorHora;
     private Integer seniaPorcentaje;
 
+    private boolean seniaObligatoria = true;
+
 }

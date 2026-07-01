@@ -59,5 +59,6 @@ public class TorneoResponse {
     private long cantidadPartidos;
     private long partidosFinalizados;
     private List<ConfiguracionPuntosResponse> configuracionPuntos;
+    private List<ConfiguracionCategoriaTorneoResponse> configuracionesCategoria;
 
 }

@@ -2,6 +2,7 @@ package com.padel.rankpadel.service;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -15,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.padel.rankpadel.dto.request.ResultadoRequest;
 import com.padel.rankpadel.dto.response.PartidoResponse;
+import com.padel.rankpadel.entity.ConfiguracionCategoriaTorneo;
 import com.padel.rankpadel.entity.Grupo;
 import com.padel.rankpadel.entity.Pareja;
 import com.padel.rankpadel.entity.Partido;
@@ -27,6 +29,7 @@ import com.padel.rankpadel.enums.FasePartido;
 import com.padel.rankpadel.exception.EstadoInvalidoException;
 import com.padel.rankpadel.exception.ResourceNotFoundException;
 import com.padel.rankpadel.mapper.PartidoMapper;
+import com.padel.rankpadel.repository.ConfiguracionCategoriaTorneoRepository;
 import com.padel.rankpadel.repository.GrupoRepository;
 import com.padel.rankpadel.repository.PartidoRepository;
 import com.padel.rankpadel.repository.PosicionGrupoRepository;
@@ -47,6 +50,7 @@ public class ResultadoService {
     private final GrupoRepository grupoRepository;
     private final RankingService rankingService;
     private final CampeonService campeonService;
+    private final ConfiguracionCategoriaTorneoRepository configuracionCategoriaTorneoRepository;
 
     @Transactional
     public PartidoResponse cargarResultado(Long torneoId, Long partidoId, ResultadoRequest request) {
@@ -187,10 +191,10 @@ public class ResultadoService {
 
     private Pareja determinarGanador(Partido partido, String marcador) {
         if (!marcador.matches("\\d+-\\d+(\\s*/\\s*\\d+-\\d+)*")) {
-            throw new EstadoInvalidoException("El marcador debe tener formato 6-3 / 4-6 / 7-5 o 6-3 / 4-6 / 10-8 (super tie-break)");
+            throw new EstadoInvalidoException("El marcador debe tener formato 6-3 / 4-6 / 7-5");
         }
 
-        int mejorDe = partido.getTorneo().getMejorDeSets() != null ? partido.getTorneo().getMejorDeSets() : 3;
+        int mejorDe = mejorDeSetsDeCategoria(partido);
         int setsParaGanar = (mejorDe / 2) + 1;
 
         String[] sets = marcador.split("\\s*/\\s*");
@@ -211,8 +215,7 @@ public class ResultadoService {
             if (gamesLocal == gamesVisitante) {
                 throw new EstadoInvalidoException("Un set no puede terminar empatado");
             }
-            boolean esSupertiebreak = mejorDe > 1 && (i == mejorDe - 1) && (Math.max(gamesLocal, gamesVisitante) >= 10);
-            validarSet(gamesLocal, gamesVisitante, esSupertiebreak, i + 1);
+            validarSet(gamesLocal, gamesVisitante, i + 1);
             if (gamesLocal > gamesVisitante) {
                 setsLocal++;
             } else {
@@ -231,31 +234,22 @@ public class ResultadoService {
         return setsLocal > setsVisitante ? partido.getLocal() : partido.getVisitante();
     }
 
-    private void validarSet(int local, int visitante, boolean esSupertiebreak, int numSet) {
+    private void validarSet(int local, int visitante, int numSet) {
         int ganador = Math.max(local, visitante);
         int perdedor = Math.min(local, visitante);
         int diferencia = ganador - perdedor;
 
-        if (esSupertiebreak) {
-            if (ganador < 10) {
-                throw new EstadoInvalidoException("El super tie-break (set " + numSet + ") debe jugarse hasta al menos 10: " + local + "-" + visitante);
-            }
-            if (diferencia < 2) {
-                throw new EstadoInvalidoException("El super tie-break (set " + numSet + ") requiere 2 puntos de ventaja: " + local + "-" + visitante);
-            }
-        } else {
-            if (ganador < 6) {
-                throw new EstadoInvalidoException("El set " + numSet + " no tiene un marcador válido (mínimo 6 juegos): " + local + "-" + visitante);
-            }
-            if (ganador == 6 && diferencia < 2) {
-                throw new EstadoInvalidoException("El set " + numSet + " con " + local + "-" + visitante + " no es válido: se necesita ventaja de 2 o llegar a 7");
-            }
-            if (ganador == 7 && perdedor < 5) {
-                throw new EstadoInvalidoException("El set " + numSet + " con " + local + "-" + visitante + " no es un marcador válido de pádel");
-            }
-            if (ganador > 7) {
-                throw new EstadoInvalidoException("Un set normal no puede superar 7 juegos. Use super tie-break para el 3er set: " + local + "-" + visitante);
-            }
+        if (ganador < 6) {
+            throw new EstadoInvalidoException("El set " + numSet + " no tiene un marcador válido (mínimo 6 juegos): " + local + "-" + visitante);
+        }
+        if (ganador == 6 && diferencia < 2) {
+            throw new EstadoInvalidoException("El set " + numSet + " con " + local + "-" + visitante + " no es válido: se necesita ventaja de 2 o llegar a 7");
+        }
+        if (ganador == 7 && perdedor < 5) {
+            throw new EstadoInvalidoException("El set " + numSet + " con " + local + "-" + visitante + " no es un marcador válido de pádel");
+        }
+        if (ganador > 7) {
+            throw new EstadoInvalidoException("Un set no puede superar 7 juegos: " + local + "-" + visitante);
         }
     }
 
@@ -355,7 +349,7 @@ public class ResultadoService {
 
         if (!todosFinalizados) return;
 
-        int avanzan = torneo.getAvanzanPorGrupo() != null ? torneo.getAvanzanPorGrupo() : 1;
+        int avanzan = avanzanPorGrupoDeCategoria(torneo, grupo.getCategoria().getId());
 
         Map<Long, List<PosicionGrupo>> ordenadasPorGrupo = new LinkedHashMap<>();
         for (Grupo g : gruposCategoria) {
@@ -375,22 +369,22 @@ public class ResultadoService {
             return;
         }
 
-        List<Pareja> seeds = new ArrayList<>();
-        for (int tier = 0; tier < avanzan; tier++) {
-            List<PosicionGrupo> tierList = new ArrayList<>();
-            for (Grupo g : gruposCategoria) {
+        List<Grupo> gruposOrdenados = gruposCategoria.stream()
+                .sorted(Comparator.comparing(Grupo::getNombre, Comparator.nullsLast(Comparator.naturalOrder())))
+                .collect(Collectors.toList());
+
+        List<Pareja> clasificados = new ArrayList<>();
+        for (int posicion = 0; posicion < avanzan; posicion++) {
+            for (Grupo g : gruposOrdenados) {
                 List<PosicionGrupo> ord = ordenadasPorGrupo.get(g.getId());
-                if (tier < ord.size()) tierList.add(ord.get(tier));
-            }
-            for (PosicionGrupo pg : PosicionGrupoOrdenador.ordenar(tierList)) {
-                seeds.add(pg.getPareja());
+                if (posicion < ord.size()) clasificados.add(ord.get(posicion).getPareja());
             }
         }
 
-        if (seeds.size() < 2) return;
+        if (clasificados.size() < 2) return;
 
         int tamano = 1;
-        while (tamano < seeds.size()) tamano *= 2;
+        while (tamano < clasificados.size()) tamano *= 2;
 
         RondaEliminatorias primeraRonda = RondaEliminatorias.builder()
                 .nombre(nombreRonda(tamano))
@@ -400,7 +394,7 @@ public class ResultadoService {
                 .build();
         rondaEliminatoriasRepository.save(primeraRonda);
 
-        List<BracketSeeder.Match> llave = BracketSeeder.sembrar(seeds);
+        List<BracketSeeder.Match> llave = BracketSeeder.sembrarPorPosicion(clasificados);
         partidoRepository.saveAll(BracketSeeder.construirPartidos(llave, torneo, primeraRonda));
     }
 
@@ -514,6 +508,47 @@ public class ResultadoService {
             posPerdedor.setPp(posPerdedor.getPp() + 1);
             posicionGrupoRepository.save(posPerdedor);
         }
+    }
+
+    private int mejorDeSetsDeCategoria(Partido partido) {
+        Long categoriaId = categoriaIdDePartido(partido);
+        if (categoriaId != null) {
+            Integer mejorDe = configuracionCategoriaTorneoRepository
+                    .findByTorneoIdAndCategoriaId(partido.getTorneo().getId(), categoriaId)
+                    .map(ConfiguracionCategoriaTorneo::getMejorDeSets)
+                    .orElse(null);
+            if (mejorDe != null) {
+                return mejorDe;
+            }
+        }
+        return partido.getTorneo().getMejorDeSets() != null ? partido.getTorneo().getMejorDeSets() : 3;
+    }
+
+    private int avanzanPorGrupoDeCategoria(Torneo torneo, Long categoriaId) {
+        Integer avanzan = configuracionCategoriaTorneoRepository
+                .findByTorneoIdAndCategoriaId(torneo.getId(), categoriaId)
+                .map(ConfiguracionCategoriaTorneo::getAvanzanPorGrupo)
+                .orElse(null);
+        if (avanzan != null) {
+            return avanzan;
+        }
+        return torneo.getAvanzanPorGrupo() != null ? torneo.getAvanzanPorGrupo() : 1;
+    }
+
+    private Long categoriaIdDePartido(Partido partido) {
+        try {
+            if (partido.getLocal() != null && partido.getLocal().getCategoria() != null) {
+                return partido.getLocal().getCategoria().getId();
+            }
+        } catch (jakarta.persistence.EntityNotFoundException ignored) {
+        }
+        if (partido.getGrupo() != null && partido.getGrupo().getCategoria() != null) {
+            return partido.getGrupo().getCategoria().getId();
+        }
+        if (partido.getRonda() != null && partido.getRonda().getCategoria() != null) {
+            return partido.getRonda().getCategoria().getId();
+        }
+        return null;
     }
 
     private String nombreRonda(int tamano) {

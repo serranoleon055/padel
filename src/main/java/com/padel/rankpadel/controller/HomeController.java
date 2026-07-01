@@ -46,8 +46,9 @@ public class HomeController {
 
     @Operation(summary = "Obtener datos completos del dashboard admin", description = "Requiere JWT. Incluye metricas, temporada activa, ultimos torneos, evolucion.")
     @GetMapping("/admin-dashboard")
-    public ResponseEntity<AdminDashboardResponse> obtenerDashboard() {
-        return ResponseEntity.ok(homeService.obtenerDashboard());
+    public ResponseEntity<AdminDashboardResponse> obtenerDashboard(
+            @org.springframework.web.bind.annotation.RequestParam(required = false) Long lugarId) {
+        return ResponseEntity.ok(homeService.obtenerDashboard(lugarId));
     }
 
     @SecurityRequirements({})

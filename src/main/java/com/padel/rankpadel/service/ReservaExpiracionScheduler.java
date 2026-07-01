@@ -15,4 +15,9 @@ public class ReservaExpiracionScheduler {
     public void expirarPendientes() {
         reservaService.expirarPendientesVencidas();
     }
+
+    @Scheduled(fixedRate = 300_000)
+    public void finalizarTurnosPasados() {
+        reservaService.finalizarTurnosPasados();
+    }
 }

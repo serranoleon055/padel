@@ -48,6 +48,12 @@ public class PagoController {
     }
 
     @SecurityRequirements({})
+    @PostMapping("/{id}/cancelar")
+    public ResponseEntity<PagoResponse> cancelarPagoReserva(@PathVariable Long id) {
+        return ResponseEntity.ok(pagoService.cancelarPagoReserva(id));
+    }
+
+    @SecurityRequirements({})
     @PostMapping("/webhook")
     public ResponseEntity<Void> webhook(
             @RequestParam(required = false) String type,

@@ -108,4 +108,8 @@ public class Torneo {
     @OneToMany(mappedBy = "torneo", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<ConfiguracionPuntos> configuracionPuntos;
 
+    @Builder.Default
+    @OneToMany(mappedBy = "torneo", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<ConfiguracionCategoriaTorneo> configuracionesCategoria = new ArrayList<>();
+
 }

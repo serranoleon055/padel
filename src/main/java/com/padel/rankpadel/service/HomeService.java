@@ -1,39 +1,52 @@
 package com.padel.rankpadel.service;
 
+import java.math.BigDecimal;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
-import java.time.temporal.TemporalAdjusters;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.padel.rankpadel.dto.response.AdminDashboardResponse;
 import com.padel.rankpadel.dto.response.CampeonResponse;
+import com.padel.rankpadel.dto.response.CanchaEstadoDashboardResponse;
+import com.padel.rankpadel.dto.response.SlotDisponibilidad;
 import com.padel.rankpadel.dto.response.HomeResponse;
 import com.padel.rankpadel.dto.response.HomeSummaryResponse;
 import com.padel.rankpadel.dto.response.PagedResponse;
 import com.padel.rankpadel.dto.response.PartidoResponse;
 import com.padel.rankpadel.dto.response.RankingResponse;
+import com.padel.rankpadel.dto.response.ReservaResponse;
+import com.padel.rankpadel.dto.response.SolicitudInscripcionResponse;
 import com.padel.rankpadel.dto.response.TemporadaResponse;
 import com.padel.rankpadel.dto.response.TorneoResponse;
+import com.padel.rankpadel.dto.response.TurnoResumenResponse;
+import com.padel.rankpadel.entity.Cancha;
 import com.padel.rankpadel.entity.Categoria;
 import com.padel.rankpadel.entity.Partido;
+import com.padel.rankpadel.entity.Reserva;
 import com.padel.rankpadel.entity.Temporada;
 import com.padel.rankpadel.entity.Torneo;
 import com.padel.rankpadel.enums.EstadoPartido;
+import com.padel.rankpadel.enums.EstadoReserva;
 import com.padel.rankpadel.enums.EstadoTorneo;
 import com.padel.rankpadel.enums.Genero;
 import com.padel.rankpadel.mapper.PartidoMapper;
 import com.padel.rankpadel.mapper.TemporadaMapper;
 import com.padel.rankpadel.mapper.TorneoMapper;
+import com.padel.rankpadel.repository.CanchaRepository;
 import com.padel.rankpadel.repository.CategoriaRepository;
 import com.padel.rankpadel.repository.JugadorRepository;
 import com.padel.rankpadel.repository.ParejaRepository;
 import com.padel.rankpadel.repository.PartidoRepository;
+import com.padel.rankpadel.repository.ReservaRepository;
 import com.padel.rankpadel.repository.TemporadaRepository;
 import com.padel.rankpadel.repository.TorneoRepository;
 
@@ -59,6 +72,10 @@ public class HomeService {
     private final TemporadaMapper temporadaMapper;
     private final RankingService rankingService;
     private final CampeonService campeonService;
+    private final ReservaRepository reservaRepository;
+    private final CanchaRepository canchaRepository;
+    private final InscripcionService inscripcionService;
+    private final DisponibilidadCanchaService disponibilidadCanchaService;
 
     @Transactional(readOnly = true)
     public HomeSummaryResponse obtenerSummary() {
@@ -72,13 +89,12 @@ public class HomeService {
                 .jugadoresRegistrados(jugadorRepository.countByActivoTrue())
                 .partidosFinalizados(partidoRepository.countByEstado(EstadoPartido.FINALIZADO))
                 .partidosEnVivo(partidoRepository.countByEstado(EstadoPartido.EN_CURSO))
-                .torneosTotales(torneoRepository.countByActivoTrue())
                 .categoriasActivas(categoriaRepository.count())
                 .build();
     }
 
     @Transactional(readOnly = true)
-    public AdminDashboardResponse obtenerDashboard() {
+    public AdminDashboardResponse obtenerDashboard(Long lugarId) {
         HomeSummaryResponse summary = obtenerSummary();
 
         TemporadaResponse temporadaActiva = null;
@@ -91,38 +107,152 @@ public class HomeService {
         }
 
         List<Torneo> todos = torneoRepository.findByActivoTrue();
-        List<TorneoResponse> ultimosTorneos = todos.stream()
+        List<Torneo> torneosDelLugar = todos.stream()
+                .filter(t -> lugarId == null || (t.getLugar() != null && lugarId.equals(t.getLugar().getId())))
+                .toList();
+        List<TorneoResponse> ultimosTorneos = torneosDelLugar.stream()
                 .sorted(Comparator.comparing(Torneo::getId).reversed())
                 .limit(5)
                 .map(this::mapearTorneoConMetricas)
                 .toList();
 
-        List<TorneoResponse> torneosEnVivo = todos.stream()
+        List<TorneoResponse> torneosEnVivo = torneosDelLugar.stream()
                 .filter(t -> EstadoTorneo.EN_CURSO.equals(t.getEstado()))
                 .limit(4)
                 .map(this::mapearTorneoConMetricas)
                 .toList();
 
-        List<Long> evolucionMeses = new ArrayList<>();
-        LocalDate now = LocalDate.now();
-        for (int i = 5; i >= 0; i--) {
-            LocalDate inicioMes = now.minusMonths(i).withDayOfMonth(1);
-            LocalDate finMes = now.minusMonths(i).with(TemporalAdjusters.lastDayOfMonth());
-            long count = todos.stream()
-                    .filter(t -> t.getFechaInicio() != null
-                            && !t.getFechaInicio().isBefore(inicioMes)
-                            && !t.getFechaInicio().isAfter(finMes))
-                    .count();
-            evolucionMeses.add(count);
+        LocalDate hoy = LocalDate.now();
+        LocalTime ahora = LocalTime.now();
+
+        List<Cancha> canchasLugar = canchaRepository.findByActivoTrue().stream()
+                .filter(cancha -> cancha.getLugar() != null && !cancha.getLugar().isArchivado())
+                .filter(cancha -> lugarId == null || lugarId.equals(cancha.getLugar().getId()))
+                .sorted(Comparator.comparing(Cancha::getNombre, Comparator.nullsLast(Comparator.naturalOrder())))
+                .toList();
+        java.util.Set<Long> canchasValidas = canchasLugar.stream()
+                .map(Cancha::getId)
+                .collect(java.util.stream.Collectors.toSet());
+        long canchasTotales = canchasValidas.size();
+
+        List<Reserva> reservasConfirmadasHoy = reservaRepository
+                .findByFechaAndEstadoIn(hoy, List.of(EstadoReserva.CONFIRMADA, EstadoReserva.FINALIZADA)).stream()
+                .filter(reserva -> esDeCancha(reserva, canchasValidas))
+                .toList();
+        java.util.Set<Long> canchasOcupadasIds = reservasConfirmadasHoy.stream()
+                .filter(reserva -> turnoCubreMomento(reserva, ahora))
+                .map(reserva -> reserva.getCancha() != null ? reserva.getCancha().getId() : null)
+                .filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+        long canchasOcupadasAhora = canchasOcupadasIds.size();
+        long canchasLibresAhora = Math.max(0, canchasTotales - canchasOcupadasAhora);
+
+        List<CanchaEstadoDashboardResponse> canchas = canchasLugar.stream()
+                .map(cancha -> CanchaEstadoDashboardResponse.builder()
+                        .id(cancha.getId())
+                        .nombre(cancha.getNombre())
+                        .ocupadaAhora(canchasOcupadasIds.contains(cancha.getId()))
+                        .build())
+                .toList();
+
+        long turnosDisponiblesHoy = canchasLugar.stream()
+                .mapToLong(cancha -> disponibilidadCanchaService.slots(cancha.getId(), hoy).stream()
+                        .filter(SlotDisponibilidad::isDisponible)
+                        .count())
+                .sum();
+
+        List<Reserva> reservasPendientesLista = reservaRepository.findByEstado(EstadoReserva.PENDIENTE).stream()
+                .filter(reserva -> esDeCancha(reserva, canchasValidas))
+                .sorted(Comparator.comparing(Reserva::getFecha, Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(Reserva::getHoraInicio, Comparator.nullsLast(Comparator.naturalOrder())))
+                .toList();
+        long reservasPendientes = reservasPendientesLista.size();
+
+        List<SolicitudInscripcionResponse> solicitudesPendientesLista = inscripcionService.listarPendientesGlobal(lugarId);
+        long solicitudesPendientes = solicitudesPendientesLista.size();
+
+        BigDecimal ingresoEstimadoHoy = reservasConfirmadasHoy.stream()
+                .map(reserva -> reserva.getCancha() != null ? reserva.getCancha().getPrecioPorHora() : null)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        LocalDate inicioSemana = hoy.with(DayOfWeek.MONDAY);
+        List<Reserva> reservasSemana = reservaRepository.findByFechaBetweenAndEstadoIn(
+                inicioSemana, inicioSemana.plusDays(6),
+                List.of(EstadoReserva.CONFIRMADA, EstadoReserva.FINALIZADA)).stream()
+                .filter(reserva -> esDeCancha(reserva, canchasValidas))
+                .toList();
+        List<Long> turnosPorDiaSemana = new ArrayList<>();
+        for (int i = 0; i < 7; i++) {
+            LocalDate dia = inicioSemana.plusDays(i);
+            turnosPorDiaSemana.add(reservasSemana.stream().filter(reserva -> dia.equals(reserva.getFecha())).count());
         }
+
+        List<TurnoResumenResponse> proximosTurnosHoy = reservasConfirmadasHoy.stream()
+                .filter(reserva -> reserva.getHoraInicio() != null && !reserva.getHoraInicio().isBefore(ahora))
+                .sorted(Comparator.comparing((Reserva reserva) -> reserva.getCancha() != null ? reserva.getCancha().getNombre() : "",
+                                Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(Reserva::getHoraInicio))
+                .map(reserva -> TurnoResumenResponse.builder()
+                        .canchaId(reserva.getCancha() != null ? reserva.getCancha().getId() : null)
+                        .canchaNombre(reserva.getCancha() != null ? reserva.getCancha().getNombre() : "Cancha")
+                        .horaInicio(reserva.getHoraInicio())
+                        .horaFin(reserva.getHoraFin())
+                        .clienteNombre(reserva.getClienteNombre())
+                        .build())
+                .toList();
 
         return AdminDashboardResponse.builder()
                 .summary(summary)
                 .temporadaActiva(temporadaActiva)
                 .ultimosTorneos(ultimosTorneos)
                 .torneosEnVivo(torneosEnVivo)
-                .evolucionMeses(evolucionMeses)
+                .canchasTotales(canchasTotales)
+                .canchasOcupadasAhora(canchasOcupadasAhora)
+                .canchasLibresAhora(canchasLibresAhora)
+                .turnosDisponiblesHoy(turnosDisponiblesHoy)
+                .canchas(canchas)
+                .reservasHoy(reservasConfirmadasHoy.size())
+                .reservasPendientes(reservasPendientes)
+                .solicitudesPendientes(solicitudesPendientes)
+                .ingresoEstimadoHoy(ingresoEstimadoHoy)
+                .turnosPorDiaSemana(turnosPorDiaSemana)
+                .proximosTurnosHoy(proximosTurnosHoy)
+                .reservasPendientesLista(reservasPendientesLista.stream().map(this::aReservaResponse).toList())
+                .solicitudesPendientesLista(solicitudesPendientesLista)
                 .build();
+    }
+
+    private boolean esDeCancha(Reserva reserva, java.util.Set<Long> canchasValidas) {
+        Long canchaId = reserva.getCancha() != null ? reserva.getCancha().getId() : null;
+        return canchaId != null && canchasValidas.contains(canchaId);
+    }
+
+    private ReservaResponse aReservaResponse(Reserva reserva) {
+        return ReservaResponse.builder()
+                .id(reserva.getId())
+                .canchaId(reserva.getCancha() != null ? reserva.getCancha().getId() : null)
+                .canchaNombre(reserva.getCancha() != null ? reserva.getCancha().getNombre() : null)
+                .fecha(reserva.getFecha())
+                .horaInicio(reserva.getHoraInicio())
+                .horaFin(reserva.getHoraFin())
+                .estado(reserva.getEstado() != null ? reserva.getEstado().name() : null)
+                .clienteNombre(reserva.getClienteNombre())
+                .clienteTelefono(reserva.getClienteTelefono())
+                .codigo(reserva.getCodigo())
+                .build();
+    }
+
+    private boolean turnoCubreMomento(Reserva reserva, LocalTime momento) {
+        LocalTime inicio = reserva.getHoraInicio();
+        LocalTime fin = reserva.getHoraFin();
+        if (inicio == null || fin == null) {
+            return false;
+        }
+        if (fin.isAfter(inicio)) {
+            return !momento.isBefore(inicio) && momento.isBefore(fin);
+        }
+        return !momento.isBefore(inicio) || momento.isBefore(fin);
     }
 
     @Transactional(readOnly = true)

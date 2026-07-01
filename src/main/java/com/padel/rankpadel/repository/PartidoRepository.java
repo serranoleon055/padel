@@ -58,6 +58,12 @@ public interface PartidoRepository extends JpaRepository<Partido, Long> {
 
     long countByTorneoIdAndEstado(Long torneoId, EstadoPartido estado);
 
+    @Query("SELECT p.torneo.id, COUNT(p) FROM Partido p GROUP BY p.torneo.id")
+    List<Object[]> contarPorTorneo();
+
+    @Query("SELECT p.torneo.id, COUNT(p) FROM Partido p WHERE p.estado = :estado GROUP BY p.torneo.id")
+    List<Object[]> contarPorTorneoYEstado(@Param("estado") EstadoPartido estado);
+
     List<Partido> findByCanchaIdAndFechaHoraProgramadaBetween(Long canchaId, java.time.LocalDateTime desde, java.time.LocalDateTime hasta);
 
     @Query("""

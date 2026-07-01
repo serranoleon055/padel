@@ -11,7 +11,9 @@ import com.padel.rankpadel.dto.response.CampeonResponse;
 import com.padel.rankpadel.dto.response.PagedResponse;
 import com.padel.rankpadel.entity.Categoria;
 import com.padel.rankpadel.entity.CampeonTorneo;
+import com.padel.rankpadel.entity.ConfiguracionCategoriaTorneo;
 import com.padel.rankpadel.entity.Grupo;
+import com.padel.rankpadel.entity.Jugador;
 import com.padel.rankpadel.entity.Pareja;
 import com.padel.rankpadel.entity.Partido;
 import com.padel.rankpadel.entity.PosicionGrupo;
@@ -21,6 +23,7 @@ import com.padel.rankpadel.enums.EstadoTorneo;
 import com.padel.rankpadel.enums.FasePartido;
 import com.padel.rankpadel.enums.Genero;
 import com.padel.rankpadel.repository.CampeonTorneoRepository;
+import com.padel.rankpadel.repository.ConfiguracionCategoriaTorneoRepository;
 import com.padel.rankpadel.repository.GrupoRepository;
 import com.padel.rankpadel.repository.PartidoRepository;
 import com.padel.rankpadel.repository.PosicionGrupoRepository;
@@ -40,6 +43,7 @@ public class CampeonService {
     private final PosicionGrupoRepository posicionGrupoRepository;
     private final PartidoRepository partidoRepository;
     private final TorneoRepository torneoRepository;
+    private final ConfiguracionCategoriaTorneoRepository configuracionCategoriaTorneoRepository;
 
     public void recalcularCampeones(Torneo torneo) {
         campeonTorneoRepository.deleteByTorneoId(torneo.getId());
@@ -93,7 +97,11 @@ public class CampeonService {
     }
 
     private CampeonTorneo computarCampeon(Torneo torneo, Categoria categoria) {
-        if (torneo.isIncluyeEliminacion()) {
+        boolean incluyeEliminacion = configuracionCategoriaTorneoRepository
+                .findByTorneoIdAndCategoriaId(torneo.getId(), categoria.getId())
+                .map(ConfiguracionCategoriaTorneo::isIncluyeEliminacion)
+                .orElse(torneo.isIncluyeEliminacion());
+        if (incluyeEliminacion) {
             return computarDesdeFinal(torneo, categoria);
         }
         return computarDesdeTabla(torneo, categoria);
@@ -166,6 +174,14 @@ public class CampeonService {
                 .campeonaId(campeon.getParejaCampeona() != null ? campeon.getParejaCampeona().getId() : null)
                 .campeonaNombre(formatearPareja(campeon.getParejaCampeona()))
                 .subcampeonaNombre(formatearPareja(campeon.getParejaSubcampeona()))
+                .campeonaJugador1Id(jugadorIdPareja(campeon.getParejaCampeona(), true))
+                .campeonaJugador1Nombre(jugadorNombrePareja(campeon.getParejaCampeona(), true))
+                .campeonaJugador2Id(jugadorIdPareja(campeon.getParejaCampeona(), false))
+                .campeonaJugador2Nombre(jugadorNombrePareja(campeon.getParejaCampeona(), false))
+                .subcampeonaJugador1Id(jugadorIdPareja(campeon.getParejaSubcampeona(), true))
+                .subcampeonaJugador1Nombre(jugadorNombrePareja(campeon.getParejaSubcampeona(), true))
+                .subcampeonaJugador2Id(jugadorIdPareja(campeon.getParejaSubcampeona(), false))
+                .subcampeonaJugador2Nombre(jugadorNombrePareja(campeon.getParejaSubcampeona(), false))
                 .marcadorFinal(campeon.getMarcadorFinal())
                 .fecha(campeon.getFechaCoronacion())
                 .lugarNombre(torneo != null && torneo.getLugar() != null ? torneo.getLugar().getNombre() : null)
@@ -180,6 +196,30 @@ public class CampeonService {
             return pareja.getJugador1().getNombre() + " " + pareja.getJugador1().getApellido()
                     + " / "
                     + pareja.getJugador2().getNombre() + " " + pareja.getJugador2().getApellido();
+        } catch (EntityNotFoundException e) {
+            return null;
+        }
+    }
+
+    private Long jugadorIdPareja(Pareja pareja, boolean primero) {
+        if (pareja == null) {
+            return null;
+        }
+        try {
+            Jugador jugador = primero ? pareja.getJugador1() : pareja.getJugador2();
+            return jugador != null ? jugador.getId() : null;
+        } catch (EntityNotFoundException e) {
+            return null;
+        }
+    }
+
+    private String jugadorNombrePareja(Pareja pareja, boolean primero) {
+        if (pareja == null) {
+            return null;
+        }
+        try {
+            Jugador jugador = primero ? pareja.getJugador1() : pareja.getJugador2();
+            return jugador != null ? jugador.getNombre() + " " + jugador.getApellido() : null;
         } catch (EntityNotFoundException e) {
             return null;
         }

@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
@@ -235,6 +236,21 @@ public class TorneoController {
                         @Parameter(description = "ID del torneo") @PathVariable Long id) {
                 sorteoService.generarSorteo(id);
                 return ResponseEntity.ok().build();
+        }
+
+        @Operation(summary = "Reaplicar plantilla de puntos", description = "Requiere JWT. Borra la configuración de puntos del torneo, re-copia las rondas de su plantilla (o de una nueva si se pasa plantillaPuntosId) y recalcula el ranking.")
+        @ApiResponses({
+                        @ApiResponse(responseCode = "200", description = "Plantilla reaplicada y ranking recalculado", content = @Content(schema = @Schema(implementation = TorneoResponse.class))),
+                        @ApiResponse(responseCode = "400", description = "El torneo no tiene plantilla para reaplicar", content = @Content),
+                        @ApiResponse(responseCode = "404", description = "Torneo o plantilla no encontrada", content = @Content),
+                        @ApiResponse(responseCode = "401", description = "No autenticado", content = @Content)
+        })
+        @PostMapping("/{id}/reaplicar-plantilla-puntos")
+        public ResponseEntity<TorneoResponse> reaplicarPlantillaPuntos(
+                        @Parameter(description = "ID del torneo") @PathVariable Long id,
+                        @Parameter(description = "ID de la categoría (opcional; por defecto todas)") @RequestParam(required = false) Long categoriaId,
+                        @Parameter(description = "ID de la plantilla a aplicar (opcional; por defecto la de cada categoría)") @RequestParam(required = false) Long plantillaPuntosId) {
+                return ResponseEntity.ok(torneoService.reaplicarPlantillaPuntos(id, categoriaId, plantillaPuntosId));
         }
 
         @Operation(summary = "Cargar resultado de partido", description = "Requiere JWT. Formato del marcador: sets separados por espacio, cada set con guión. Ej: `6-3 6-4` o `6-3 3-6 7-5`.")

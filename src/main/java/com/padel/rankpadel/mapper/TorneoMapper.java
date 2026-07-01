@@ -1,14 +1,19 @@
 package com.padel.rankpadel.mapper;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.stereotype.Component;
 
 import com.padel.rankpadel.dto.request.TorneoRequest;
 import com.padel.rankpadel.dto.response.CategoriaResponse;
+import com.padel.rankpadel.dto.response.ConfiguracionCategoriaTorneoResponse;
 import com.padel.rankpadel.dto.response.ConfiguracionPuntosResponse;
 import com.padel.rankpadel.dto.response.TorneoResponse;
 import com.padel.rankpadel.entity.Categoria;
+import com.padel.rankpadel.entity.ConfiguracionCategoriaTorneo;
+import com.padel.rankpadel.entity.ConfiguracionPuntos;
 import com.padel.rankpadel.entity.Lugar;
 import com.padel.rankpadel.entity.Temporada;
 import com.padel.rankpadel.entity.Torneo;
@@ -96,6 +101,7 @@ public class TorneoMapper {
                 .categorias(mapearCategorias(torneo))
                 .cantidadCategorias(torneo.getCategorias() != null ? torneo.getCategorias().size() : 0)
                 .configuracionPuntos(mapearConfiguracionPuntos(torneo))
+                .configuracionesCategoria(mapearConfiguracionesCategoria(torneo))
                 .build();
 
         return torneoDTO;
@@ -157,13 +163,83 @@ public class TorneoMapper {
             return List.of();
         }
         return torneo.getConfiguracionPuntos().stream()
-                .map(cp -> ConfiguracionPuntosResponse.builder()
-                        .nombreRonda(cp.getNombreRonda())
-                        .puntosGanador(cp.getPuntosGanador())
-                        .puntosPerdedor(cp.getPuntosPerdedor())
-                        .orden(cp.getOrden())
+                .map(TorneoMapper::configuracionPuntosToResponse)
+                .toList();
+    }
+
+    private static ConfiguracionPuntosResponse configuracionPuntosToResponse(ConfiguracionPuntos cp) {
+        return ConfiguracionPuntosResponse.builder()
+                .nombreRonda(cp.getNombreRonda())
+                .puntosGanador(cp.getPuntosGanador())
+                .puntosPerdedor(cp.getPuntosPerdedor())
+                .orden(cp.getOrden())
+                .build();
+    }
+
+    private List<ConfiguracionCategoriaTorneoResponse> mapearConfiguracionesCategoria(Torneo torneo) {
+        if (torneo.getConfiguracionesCategoria() == null) {
+            return List.of();
+        }
+
+        Map<Long, List<ConfiguracionPuntosResponse>> puntosPorCategoria = new HashMap<>();
+        if (torneo.getConfiguracionPuntos() != null) {
+            for (ConfiguracionPuntos cp : torneo.getConfiguracionPuntos()) {
+                Long categoriaId = categoriaIdDePuntos(cp);
+                if (categoriaId == null) {
+                    continue;
+                }
+                puntosPorCategoria
+                        .computeIfAbsent(categoriaId, clave -> new java.util.ArrayList<>())
+                        .add(configuracionPuntosToResponse(cp));
+            }
+        }
+        puntosPorCategoria.values().forEach(rondas -> rondas.sort(java.util.Comparator.comparingInt(ConfiguracionPuntosResponse::getOrden)));
+
+        return torneo.getConfiguracionesCategoria().stream()
+                .map(config -> ConfiguracionCategoriaTorneoResponse.builder()
+                        .categoriaId(categoriaIdDeConfig(config))
+                        .categoriaNombre(categoriaNombreDeConfig(config))
+                        .formato(config.getFormato())
+                        .plantillaFormatoId(config.getPlantillaFormatoId())
+                        .plantillaFormatoNombre(config.getPlantillaFormatoNombre())
+                        .plantillaPuntosId(config.getPlantillaPuntosId())
+                        .plantillaPuntosNombre(config.getPlantillaPuntosNombre())
+                        .cantidadParejasObjetivo(config.getCantidadParejasObjetivo())
+                        .cantidadGrupos(config.getCantidadGrupos())
+                        .parejasPorGrupo(config.getParejasPorGrupo())
+                        .avanzanPorGrupo(config.getAvanzanPorGrupo())
+                        .incluyeFaseGrupos(config.isIncluyeFaseGrupos())
+                        .incluyeEliminacion(config.isIncluyeEliminacion())
+                        .tipoSorteo(config.getTipoSorteo())
+                        .mejorDeSets(config.getMejorDeSets())
+                        .cupo(config.getCupo())
+                        .configuracionPuntos(puntosPorCategoria.getOrDefault(categoriaIdDeConfig(config), List.of()))
                         .build())
                 .toList();
+    }
+
+    private Long categoriaIdDeConfig(ConfiguracionCategoriaTorneo config) {
+        try {
+            return config.getCategoria() != null ? config.getCategoria().getId() : null;
+        } catch (jakarta.persistence.EntityNotFoundException e) {
+            return null;
+        }
+    }
+
+    private String categoriaNombreDeConfig(ConfiguracionCategoriaTorneo config) {
+        try {
+            return config.getCategoria() != null ? config.getCategoria().getNombre() : null;
+        } catch (jakarta.persistence.EntityNotFoundException e) {
+            return null;
+        }
+    }
+
+    private Long categoriaIdDePuntos(ConfiguracionPuntos cp) {
+        try {
+            return cp.getCategoria() != null ? cp.getCategoria().getId() : null;
+        } catch (jakarta.persistence.EntityNotFoundException e) {
+            return null;
+        }
     }
 
 }

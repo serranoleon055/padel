@@ -2,6 +2,7 @@ package com.padel.rankpadel.entity;
 
 import java.math.BigDecimal;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
@@ -36,6 +37,10 @@ public class Cancha {
 
     private BigDecimal precioPorHora;
     private Integer seniaPorcentaje;
+
+    @Builder.Default
+    @Column(name = "senia_obligatoria")
+    private boolean seniaObligatoria = true;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "lugar_id")

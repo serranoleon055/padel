@@ -8,6 +8,8 @@ import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.padel.rankpadel.dto.request.ConfiguracionCategoriaTorneoRequest;
+import com.padel.rankpadel.dto.request.ConfiguracionPuntosRequest;
 import com.padel.rankpadel.dto.request.TorneoRequest;
 import com.padel.rankpadel.dto.response.GrupoResponse;
 import com.padel.rankpadel.entity.Pareja;
@@ -15,6 +17,7 @@ import com.padel.rankpadel.entity.Partido;
 import com.padel.rankpadel.dto.response.PosicionGrupoResponse;
 import com.padel.rankpadel.dto.response.TorneoResponse;
 import com.padel.rankpadel.entity.Categoria;
+import com.padel.rankpadel.entity.ConfiguracionCategoriaTorneo;
 import com.padel.rankpadel.entity.ConfiguracionPuntos;
 import com.padel.rankpadel.entity.Grupo;
 import com.padel.rankpadel.entity.Lugar;
@@ -25,11 +28,11 @@ import com.padel.rankpadel.entity.Temporada;
 import com.padel.rankpadel.entity.Torneo;
 import com.padel.rankpadel.enums.EstadoPartido;
 import com.padel.rankpadel.enums.EstadoTorneo;
+import com.padel.rankpadel.enums.FormatoTorneo;
 import com.padel.rankpadel.exception.EstadoInvalidoException;
 import com.padel.rankpadel.exception.ResourceNotFoundException;
 import com.padel.rankpadel.mapper.TorneoMapper;
 import com.padel.rankpadel.repository.CategoriaRepository;
-import com.padel.rankpadel.repository.ConfiguracionPuntosRepository;
 import com.padel.rankpadel.repository.GrupoRepository;
 import com.padel.rankpadel.repository.LugarRepository;
 import com.padel.rankpadel.repository.ParejaRepository;
@@ -52,7 +55,6 @@ public class TorneoService {
     private final TemporadaRepository temporadaRepository;
     private final LugarRepository lugarRepository;
     private final CategoriaRepository categoriaRepository;
-    private final ConfiguracionPuntosRepository configuracionPuntosRepository;
     private final PlantillaFormatoRepository plantillaFormatoRepository;
     private final PlantillaPuntosRepository plantillaPuntosRepository;
     private final ParejaRepository parejaRepository;
@@ -73,10 +75,28 @@ public class TorneoService {
 
     @Transactional(readOnly = true)
     public List<TorneoResponse> listarTodos() {
+        Map<Long, Long> parejasPorTorneo = aMapaConteo(parejaRepository.contarPorTorneo());
+        Map<Long, Long> partidosPorTorneo = aMapaConteo(partidoRepository.contarPorTorneo());
+        Map<Long, Long> finalizadosPorTorneo = aMapaConteo(partidoRepository.contarPorTorneoYEstado(EstadoPartido.FINALIZADO));
+
         return torneoRepository.findAllConRelaciones()
                 .stream()
-                .map(this::mapearConMetricas)
+                .map(torneo -> {
+                    TorneoResponse response = torneoMapper.torneoToResponse(torneo);
+                    response.setCantidadParejas(parejasPorTorneo.getOrDefault(torneo.getId(), 0L));
+                    response.setCantidadPartidos(partidosPorTorneo.getOrDefault(torneo.getId(), 0L));
+                    response.setPartidosFinalizados(finalizadosPorTorneo.getOrDefault(torneo.getId(), 0L));
+                    return response;
+                })
                 .collect(Collectors.toList());
+    }
+
+    private Map<Long, Long> aMapaConteo(List<Object[]> filas) {
+        Map<Long, Long> mapa = new java.util.HashMap<>();
+        for (Object[] fila : filas) {
+            mapa.put((Long) fila[0], (Long) fila[1]);
+        }
+        return mapa;
     }
 
     @Transactional(readOnly = true)
@@ -100,18 +120,18 @@ public class TorneoService {
 
     @Transactional
     public TorneoResponse crear(TorneoRequest torneoRequest) {
-        Temporada temporada = null;
-        if (torneoRequest.getTemporadaId() != null) {
-            temporada = temporadaRepository.findById(torneoRequest.getTemporadaId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Temporada", torneoRequest.getTemporadaId()));
-            validarTemporadaActiva(temporada);
+        if (torneoRequest.getTemporadaId() == null) {
+            throw new EstadoInvalidoException("El torneo debe tener una temporada asignada");
         }
+        Temporada temporada = temporadaRepository.findById(torneoRequest.getTemporadaId())
+                .orElseThrow(() -> new ResourceNotFoundException("Temporada", torneoRequest.getTemporadaId()));
+        validarTemporadaActiva(temporada);
 
-        Lugar lugar = null;
-        if (torneoRequest.getLugarId() != null) {
-            lugar = lugarRepository.findById(torneoRequest.getLugarId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Lugar", torneoRequest.getLugarId()));
+        if (torneoRequest.getLugarId() == null) {
+            throw new EstadoInvalidoException("El torneo debe tener un lugar asignado");
         }
+        Lugar lugar = lugarRepository.findById(torneoRequest.getLugarId())
+                .orElseThrow(() -> new ResourceNotFoundException("Lugar", torneoRequest.getLugarId()));
 
         Torneo torneo = torneoMapper.requestToTorneo(torneoRequest, temporada, lugar);
         aplicarPlantillaFormatoSiCorresponde(torneo, torneoRequest.getPlantillaFormatoId());
@@ -124,7 +144,8 @@ public class TorneoService {
 
         torneoRepository.save(torneo);
 
-        copiarConfiguracionPuntos(torneo, torneoRequest);
+        aplicarPlantillaPuntosTorneoMeta(torneo, torneoRequest.getPlantillaPuntosId());
+        sincronizarConfiguracionPorCategoria(torneo, torneoRequest);
 
         return mapearConMetricas(torneo);
     }
@@ -143,13 +164,12 @@ public class TorneoService {
         torneoExistente.setFechaInicio(torneoRequest.getFechaInicio());
         torneoExistente.setFechaFin(torneoRequest.getFechaFin());
 
-        if (torneoRequest.getLugarId() != null) {
-            Lugar lugar = lugarRepository.findById(torneoRequest.getLugarId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Lugar", torneoRequest.getLugarId()));
-            torneoExistente.setLugar(lugar);
-        } else {
-            torneoExistente.setLugar(null);
+        if (torneoRequest.getLugarId() == null) {
+            throw new EstadoInvalidoException("El torneo debe tener un lugar asignado");
         }
+        Lugar lugar = lugarRepository.findById(torneoRequest.getLugarId())
+                .orElseThrow(() -> new ResourceNotFoundException("Lugar", torneoRequest.getLugarId()));
+        torneoExistente.setLugar(lugar);
         if (torneoRequest.getTemporadaId() != null) {
             Temporada temporada = temporadaRepository.findById(torneoRequest.getTemporadaId())
                     .orElseThrow(() -> new ResourceNotFoundException("Temporada", torneoRequest.getTemporadaId()));
@@ -159,7 +179,7 @@ public class TorneoService {
             torneoExistente.setTemporada(null);
         }
 
-        if (torneoExistente.getEstado().equals(EstadoTorneo.BORRADOR)) {
+        if (permiteEditarConfiguracion(torneoExistente.getEstado())) {
             torneoExistente.setFormato(torneoRequest.getFormato());
             torneoExistente.setSumaPuntosRanking(torneoRequest.isSumaPuntosRanking());
             torneoExistente.setCantidadParejasObjetivo(torneoRequest.getCantidadParejasObjetivo());
@@ -176,14 +196,91 @@ public class TorneoService {
                     : new java.util.HashMap<>());
             aplicarPlantillaFormatoSiCorresponde(torneoExistente, torneoRequest.getPlantillaFormatoId());
 
-            if (torneoRequest.getConfiguracionPuntos() != null || torneoRequest.getPlantillaPuntosId() != null) {
-                configuracionPuntosRepository.deleteAll(configuracionPuntosRepository.findByTorneoIdOrderByOrden(id));
-                copiarConfiguracionPuntos(torneoExistente, torneoRequest);
-            }
+            aplicarPlantillaPuntosTorneoMeta(torneoExistente, torneoRequest.getPlantillaPuntosId());
+            sincronizarConfiguracionPorCategoria(torneoExistente, torneoRequest);
         }
 
         torneoRepository.save(torneoExistente);
         return mapearConMetricas(torneoExistente);
+    }
+
+    @Transactional
+    public TorneoResponse reaplicarPlantillaPuntos(Long id, Long categoriaId, Long plantillaPuntosId) {
+        Torneo torneo = torneoRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Torneo", id));
+
+        List<ConfiguracionCategoriaTorneo> objetivos = torneo.getConfiguracionesCategoria().stream()
+                .filter(config -> categoriaId == null || categoriaId.equals(idCategoria(config)))
+                .collect(Collectors.toList());
+
+        if (objetivos.isEmpty()) {
+            throw new EstadoInvalidoException("El torneo no tiene configuración de puntos por categoría para reaplicar.");
+        }
+
+        boolean algunaReaplicada = false;
+        for (ConfiguracionCategoriaTorneo config : objetivos) {
+            Long idPlantilla = plantillaPuntosId != null ? plantillaPuntosId : config.getPlantillaPuntosId();
+            if (idPlantilla == null) {
+                continue;
+            }
+            PlantillaPuntos plantilla = plantillaPuntosRepository.findByIdAndActivoTrue(idPlantilla)
+                    .orElseThrow(() -> new ResourceNotFoundException("PlantillaPuntos", idPlantilla));
+            config.setPlantillaPuntosId(plantilla.getId());
+            config.setPlantillaPuntosNombre(plantilla.getNombre());
+            reemplazarPuntosDeCategoria(torneo, config.getCategoria(), plantilla);
+            algunaReaplicada = true;
+        }
+
+        if (!algunaReaplicada) {
+            throw new EstadoInvalidoException("Ninguna categoría tiene una plantilla de puntos para reaplicar. Elegí una.");
+        }
+
+        torneoRepository.save(torneo);
+
+        rankingService.recalcularPuntos();
+
+        return mapearConMetricas(torneo);
+    }
+
+    private void reemplazarPuntosDeCategoria(Torneo torneo, Categoria categoria, PlantillaPuntos plantilla) {
+        if (torneo.getConfiguracionPuntos() == null) {
+            torneo.setConfiguracionPuntos(new ArrayList<>());
+        }
+        Long categoriaId = categoria.getId();
+        torneo.getConfiguracionPuntos().removeIf(cp -> categoriaId.equals(idCategoria(cp)));
+        plantilla.getRondas().forEach(ronda -> torneo.getConfiguracionPuntos().add(ConfiguracionPuntos.builder()
+                .nombreRonda(ronda.getNombreRonda())
+                .puntosGanador(ronda.getPuntosGanador())
+                .puntosPerdedor(ronda.getPuntosPerdedor())
+                .orden(ronda.getOrden())
+                .torneo(torneo)
+                .categoria(categoria)
+                .build()));
+    }
+
+    private Long idCategoria(ConfiguracionCategoriaTorneo config) {
+        try {
+            return config.getCategoria() != null ? config.getCategoria().getId() : null;
+        } catch (jakarta.persistence.EntityNotFoundException e) {
+            return null;
+        }
+    }
+
+    private Long idCategoria(ConfiguracionPuntos puntos) {
+        try {
+            return puntos.getCategoria() != null ? puntos.getCategoria().getId() : null;
+        } catch (jakarta.persistence.EntityNotFoundException e) {
+            return null;
+        }
+    }
+
+    private void reemplazarConfiguracionPuntos(Torneo torneo, List<ConfiguracionPuntos> configs) {
+        if (torneo.getConfiguracionPuntos() == null) {
+            torneo.setConfiguracionPuntos(new ArrayList<>());
+        } else {
+            torneo.getConfiguracionPuntos().clear();
+        }
+        torneo.getConfiguracionPuntos().addAll(configs);
     }
 
     @Transactional
@@ -230,6 +327,10 @@ public class TorneoService {
         return mapearConMetricas(torneo);
     }
 
+    private boolean permiteEditarConfiguracion(EstadoTorneo estado) {
+        return estado == EstadoTorneo.BORRADOR || estado == EstadoTorneo.INSCRIPCION;
+    }
+
     private void validarTransicion(EstadoTorneo actual, EstadoTorneo nuevo) {
         List<EstadoTorneo> permitidos = TRANSICIONES.getOrDefault(actual, List.of());
         if (!permitidos.contains(nuevo)) {
@@ -266,49 +367,180 @@ public class TorneoService {
         }
     }
 
-    private void copiarConfiguracionPuntos(Torneo torneo, TorneoRequest torneoRequest) {
-        PlantillaPuntos plantilla = null;
-        if (torneoRequest.getPlantillaPuntosId() != null) {
-            plantilla = plantillaPuntosRepository.findByIdAndActivoTrue(torneoRequest.getPlantillaPuntosId())
-                    .orElseThrow(() -> new ResourceNotFoundException("PlantillaPuntos", torneoRequest.getPlantillaPuntosId()));
-            torneo.setPlantillaPuntosId(plantilla.getId());
-            torneo.setPlantillaPuntosNombre(plantilla.getNombre());
-        } else {
+    private void aplicarPlantillaPuntosTorneoMeta(Torneo torneo, Long plantillaPuntosId) {
+        if (plantillaPuntosId == null) {
             torneo.setPlantillaPuntosId(null);
             torneo.setPlantillaPuntosNombre(null);
+            return;
+        }
+        PlantillaPuntos plantilla = plantillaPuntosRepository.findByIdAndActivoTrue(plantillaPuntosId)
+                .orElseThrow(() -> new ResourceNotFoundException("PlantillaPuntos", plantillaPuntosId));
+        torneo.setPlantillaPuntosId(plantilla.getId());
+        torneo.setPlantillaPuntosNombre(plantilla.getNombre());
+    }
+
+    private void sincronizarConfiguracionPorCategoria(Torneo torneo, TorneoRequest request) {
+        Map<Long, ConfiguracionCategoriaTorneoRequest> porCategoria = new java.util.HashMap<>();
+        if (request.getConfiguracionesCategoria() != null) {
+            for (ConfiguracionCategoriaTorneoRequest config : request.getConfiguracionesCategoria()) {
+                if (config.getCategoriaId() != null) {
+                    porCategoria.put(config.getCategoriaId(), config);
+                }
+            }
         }
 
-        List<ConfiguracionPuntos> configs;
-        if (plantilla != null) {
-            configs = plantilla.getRondas().stream()
+        List<ConfiguracionCategoriaTorneo> configs = new ArrayList<>();
+        List<ConfiguracionPuntos> puntos = new ArrayList<>();
+
+        for (Categoria categoria : torneo.getCategorias()) {
+            ConfiguracionCategoriaTorneoRequest req = porCategoria.get(categoria.getId());
+            configs.add(construirConfigCategoria(torneo, categoria, req, request));
+            puntos.addAll(construirPuntosCategoria(torneo, categoria, req, request));
+        }
+
+        reemplazarConfiguracionesCategoria(torneo, configs);
+        reemplazarConfiguracionPuntos(torneo, puntos);
+    }
+
+    private ConfiguracionCategoriaTorneo construirConfigCategoria(Torneo torneo, Categoria categoria,
+            ConfiguracionCategoriaTorneoRequest req, TorneoRequest base) {
+        ConfiguracionCategoriaTorneo config = ConfiguracionCategoriaTorneo.builder()
+                .torneo(torneo)
+                .categoria(categoria)
+                .build();
+
+        if (req != null) {
+            FormatoTorneo formato = req.getFormato() != null ? req.getFormato() : base.getFormato();
+            config.setFormato(formato);
+            config.setTipoSorteo(req.getTipoSorteo() != null ? req.getTipoSorteo() : base.getTipoSorteo());
+            config.setCantidadParejasObjetivo(req.getCantidadParejasObjetivo());
+            config.setCantidadGrupos(req.getCantidadGrupos());
+            config.setParejasPorGrupo(req.getParejasPorGrupo());
+            config.setAvanzanPorGrupo(req.getAvanzanPorGrupo());
+            config.setIncluyeFaseGrupos(req.isIncluyeFaseGrupos());
+            config.setIncluyeEliminacion(req.isIncluyeEliminacion());
+            config.setMejorDeSets(TorneoMapper.mejorDeSetsPorDefecto(req.getMejorDeSets(), formato));
+            config.setCupo(req.getCantidadParejasObjetivo());
+            resolverMetaPlantillaFormato(config, req.getPlantillaFormatoId());
+            aplicarPlantillaPuntosMetaAConfig(config, req.getPlantillaPuntosId());
+            if (formato == FormatoTorneo.LIGA) {
+                config.setIncluyeFaseGrupos(true);
+                config.setIncluyeEliminacion(false);
+            }
+            return config;
+        }
+
+        config.setFormato(base.getFormato());
+        config.setTipoSorteo(base.getTipoSorteo());
+        config.setCantidadParejasObjetivo(base.getCantidadParejasObjetivo());
+        config.setCantidadGrupos(base.getCantidadGrupos());
+        config.setParejasPorGrupo(base.getParejasPorGrupo());
+        config.setAvanzanPorGrupo(base.getAvanzanPorGrupo());
+        config.setIncluyeFaseGrupos(base.isIncluyeFaseGrupos());
+        config.setIncluyeEliminacion(base.isIncluyeEliminacion());
+        config.setMejorDeSets(TorneoMapper.mejorDeSetsPorDefecto(base.getMejorDeSets(), base.getFormato()));
+        config.setCupo(base.getCuposPorCategoria() != null ? base.getCuposPorCategoria().get(categoria.getId()) : null);
+        aplicarPlantillaFormatoAConfig(config, base.getPlantillaFormatoId());
+        aplicarPlantillaPuntosMetaAConfig(config, base.getPlantillaPuntosId());
+        if (config.getFormato() == FormatoTorneo.LIGA) {
+            config.setIncluyeFaseGrupos(true);
+            config.setIncluyeEliminacion(false);
+        }
+        return config;
+    }
+
+    private void resolverMetaPlantillaFormato(ConfiguracionCategoriaTorneo config, Long plantillaFormatoId) {
+        if (plantillaFormatoId == null) {
+            config.setPlantillaFormatoId(null);
+            config.setPlantillaFormatoNombre(null);
+            return;
+        }
+        PlantillaFormato plantilla = plantillaFormatoRepository.findByIdAndActivoTrue(plantillaFormatoId)
+                .orElseThrow(() -> new ResourceNotFoundException("PlantillaFormato", plantillaFormatoId));
+        config.setPlantillaFormatoId(plantilla.getId());
+        config.setPlantillaFormatoNombre(plantilla.getNombre());
+    }
+
+    private List<ConfiguracionPuntos> construirPuntosCategoria(Torneo torneo, Categoria categoria,
+            ConfiguracionCategoriaTorneoRequest req, TorneoRequest base) {
+        Long plantillaPuntosId = req != null ? req.getPlantillaPuntosId() : base.getPlantillaPuntosId();
+        List<ConfiguracionPuntosRequest> inline = req != null ? req.getConfiguracionPuntos() : base.getConfiguracionPuntos();
+
+        if (plantillaPuntosId != null) {
+            PlantillaPuntos plantilla = plantillaPuntosRepository.findByIdAndActivoTrue(plantillaPuntosId)
+                    .orElseThrow(() -> new ResourceNotFoundException("PlantillaPuntos", plantillaPuntosId));
+            return plantilla.getRondas().stream()
                     .map(ronda -> ConfiguracionPuntos.builder()
                             .nombreRonda(ronda.getNombreRonda())
                             .puntosGanador(ronda.getPuntosGanador())
                             .puntosPerdedor(ronda.getPuntosPerdedor())
                             .orden(ronda.getOrden())
                             .torneo(torneo)
+                            .categoria(categoria)
                             .build())
                     .collect(Collectors.toList());
-        } else if (torneoRequest.getConfiguracionPuntos() != null && !torneoRequest.getConfiguracionPuntos().isEmpty()) {
-            configs = torneoRequest.getConfiguracionPuntos().stream()
+        }
+        if (inline != null && !inline.isEmpty()) {
+            return inline.stream()
                     .map(cp -> ConfiguracionPuntos.builder()
                             .nombreRonda(cp.getNombreRonda())
                             .puntosGanador(cp.getPuntosGanador())
                             .puntosPerdedor(cp.getPuntosPerdedor())
                             .orden(cp.getOrden())
                             .torneo(torneo)
+                            .categoria(categoria)
                             .build())
                     .collect(Collectors.toList());
-        } else {
-            configs = List.of();
         }
+        return List.of();
+    }
 
-        if (!configs.isEmpty()) {
-            configuracionPuntosRepository.saveAll(configs);
-            torneo.setConfiguracionPuntos(configs);
-        } else {
-            torneo.setConfiguracionPuntos(List.of());
+    private void aplicarPlantillaFormatoAConfig(ConfiguracionCategoriaTorneo config, Long plantillaFormatoId) {
+        if (plantillaFormatoId == null) {
+            config.setPlantillaFormatoId(null);
+            config.setPlantillaFormatoNombre(null);
+            return;
         }
+        PlantillaFormato plantilla = plantillaFormatoRepository.findByIdAndActivoTrue(plantillaFormatoId)
+                .orElseThrow(() -> new ResourceNotFoundException("PlantillaFormato", plantillaFormatoId));
+        config.setPlantillaFormatoId(plantilla.getId());
+        config.setPlantillaFormatoNombre(plantilla.getNombre());
+        if (config.getFormato() == null) {
+            config.setFormato(plantilla.getFormatoTorneo());
+        }
+        config.setTipoSorteo(plantilla.getTipoSorteo());
+        config.setCantidadParejasObjetivo(plantilla.getCantidadParejasObjetivo());
+        config.setCantidadGrupos(plantilla.getCantidadGrupos());
+        config.setParejasPorGrupo(plantilla.getParejasPorGrupo());
+        config.setAvanzanPorGrupo(plantilla.getAvanzanPorGrupo());
+        if (config.getFormato() == FormatoTorneo.LIGA) {
+            config.setIncluyeFaseGrupos(true);
+            config.setIncluyeEliminacion(false);
+        } else {
+            config.setIncluyeFaseGrupos(plantilla.isIncluyeFaseGrupos());
+            config.setIncluyeEliminacion(plantilla.isIncluyeEliminacion());
+        }
+    }
+
+    private void aplicarPlantillaPuntosMetaAConfig(ConfiguracionCategoriaTorneo config, Long plantillaPuntosId) {
+        if (plantillaPuntosId == null) {
+            config.setPlantillaPuntosId(null);
+            config.setPlantillaPuntosNombre(null);
+            return;
+        }
+        PlantillaPuntos plantilla = plantillaPuntosRepository.findByIdAndActivoTrue(plantillaPuntosId)
+                .orElseThrow(() -> new ResourceNotFoundException("PlantillaPuntos", plantillaPuntosId));
+        config.setPlantillaPuntosId(plantilla.getId());
+        config.setPlantillaPuntosNombre(plantilla.getNombre());
+    }
+
+    private void reemplazarConfiguracionesCategoria(Torneo torneo, List<ConfiguracionCategoriaTorneo> configs) {
+        if (torneo.getConfiguracionesCategoria() == null) {
+            torneo.setConfiguracionesCategoria(new ArrayList<>());
+        } else {
+            torneo.getConfiguracionesCategoria().clear();
+        }
+        torneo.getConfiguracionesCategoria().addAll(configs);
     }
 
     private void validarTemporadaActiva(Temporada temporada) {

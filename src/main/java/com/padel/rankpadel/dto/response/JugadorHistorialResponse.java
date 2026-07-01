@@ -23,6 +23,8 @@ public class JugadorHistorialResponse {
 
     private List<TorneoHistorialItem> torneos;
 
+    private List<TorneoHistorialItem> agenda;
+
     @Getter
     @Setter
     @AllArgsConstructor

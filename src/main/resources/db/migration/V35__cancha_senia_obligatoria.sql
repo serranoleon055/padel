@@ -1,0 +1,2 @@
+ALTER TABLE canchas
+    ADD COLUMN senia_obligatoria BOOLEAN NOT NULL DEFAULT TRUE;

@@ -1,5 +1,6 @@
 package com.padel.rankpadel.dto.response;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 import lombok.AllArgsConstructor;
@@ -19,6 +20,18 @@ public class AdminDashboardResponse {
     private TemporadaResponse temporadaActiva;
     private List<TorneoResponse> ultimosTorneos;
     private List<TorneoResponse> torneosEnVivo;
-    private List<Long> evolucionMeses;
+    private long canchasTotales;
+    private long canchasOcupadasAhora;
+    private long canchasLibresAhora;
+    private long turnosDisponiblesHoy;
+    private List<CanchaEstadoDashboardResponse> canchas;
+    private long reservasHoy;
+    private long reservasPendientes;
+    private long solicitudesPendientes;
+    private BigDecimal ingresoEstimadoHoy;
+    private List<Long> turnosPorDiaSemana;
+    private List<TurnoResumenResponse> proximosTurnosHoy;
+    private List<ReservaResponse> reservasPendientesLista;
+    private List<SolicitudInscripcionResponse> solicitudesPendientesLista;
 
 }

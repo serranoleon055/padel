@@ -14,6 +14,9 @@ public interface ParejaRepository extends JpaRepository<Pareja, Long> {
 
     long countByTorneoId(Long torneoId);
 
+    @Query("SELECT p.torneo.id, COUNT(p) FROM Pareja p GROUP BY p.torneo.id")
+    List<Object[]> contarPorTorneo();
+
     List<Pareja> findByTorneoIdAndCategoriaId(Long torneoId, Long categoriaId);
 
     long countByTorneoIdAndCategoriaId(Long torneoId, Long categoriaId);

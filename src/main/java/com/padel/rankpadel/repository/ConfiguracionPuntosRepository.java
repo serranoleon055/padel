@@ -11,4 +11,6 @@ public interface ConfiguracionPuntosRepository extends JpaRepository<Configuraci
     Optional<ConfiguracionPuntos> findByTorneoIdAndNombreRonda(Long torneoId, String nombreRonda);
 
     List<ConfiguracionPuntos> findByTorneoIdOrderByOrden(Long torneoId);
+
+    List<ConfiguracionPuntos> findByTorneoIdAndCategoriaIdOrderByOrden(Long torneoId, Long categoriaId);
 }

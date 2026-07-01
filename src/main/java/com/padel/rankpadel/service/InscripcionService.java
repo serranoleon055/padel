@@ -47,6 +47,12 @@ public class InscripcionService {
 
     @Transactional
     public SolicitudInscripcionResponse crear(Long torneoId, SolicitudInscripcionRequest request) {
+        Torneo torneo = torneoRepository.findById(torneoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Torneo", torneoId));
+        if (torneo.getCostoInscripcionJugador() == null) {
+            throw new EstadoInvalidoException(
+                    "La inscripción online no está habilitada para este torneo. Contactá al club para anotarte.");
+        }
         SolicitudInscripcion solicitud = construirSolicitud(torneoId, request);
         solicitudInscripcionRepository.save(solicitud);
         return aResponse(solicitud);
@@ -119,6 +125,17 @@ public class InscripcionService {
             solicitudes = solicitudInscripcionRepository.findByTorneoId(torneoId);
         }
         return solicitudes.stream().map(this::aResponse).collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<SolicitudInscripcionResponse> listarPendientesGlobal(Long lugarId) {
+        return solicitudInscripcionRepository
+                .findPendientesEnTorneos(EstadoSolicitud.PENDIENTE, EstadoTorneo.INSCRIPCION).stream()
+                .filter(solicitud -> lugarId == null
+                        || (solicitud.getTorneo().getLugar() != null
+                                && lugarId.equals(solicitud.getTorneo().getLugar().getId())))
+                .map(this::aResponse)
+                .collect(Collectors.toList());
     }
 
     @Transactional
@@ -223,6 +240,7 @@ public class InscripcionService {
         return SolicitudInscripcionResponse.builder()
                 .id(solicitud.getId())
                 .torneoId(solicitud.getTorneo() != null ? solicitud.getTorneo().getId() : null)
+                .torneoNombre(solicitud.getTorneo() != null ? solicitud.getTorneo().getNombre() : null)
                 .categoriaId(solicitud.getCategoria() != null ? solicitud.getCategoria().getId() : null)
                 .categoriaNombre(solicitud.getCategoria() != null ? solicitud.getCategoria().getNombre() : null)
                 .estado(solicitud.getEstado() != null ? solicitud.getEstado().name() : null)

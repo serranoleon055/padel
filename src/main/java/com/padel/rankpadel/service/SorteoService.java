@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.Comparator;
 
 import com.padel.rankpadel.entity.Categoria;
+import com.padel.rankpadel.entity.ConfiguracionCategoriaTorneo;
 import com.padel.rankpadel.entity.Grupo;
 import com.padel.rankpadel.entity.Pareja;
 import com.padel.rankpadel.entity.Partido;
@@ -27,12 +28,14 @@ import com.padel.rankpadel.enums.FormatoTorneo;
 import com.padel.rankpadel.enums.TipoSorteo;
 import com.padel.rankpadel.exception.EstadoInvalidoException;
 import com.padel.rankpadel.exception.ResourceNotFoundException;
+import com.padel.rankpadel.repository.ConfiguracionCategoriaTorneoRepository;
 import com.padel.rankpadel.repository.GrupoRepository;
 import com.padel.rankpadel.repository.ParejaRepository;
 import com.padel.rankpadel.repository.PartidoRepository;
 import com.padel.rankpadel.repository.PosicionGrupoRepository;
 import com.padel.rankpadel.repository.RankingEntryRepository;
 import com.padel.rankpadel.repository.RondaEliminatoriasRepository;
+import com.padel.rankpadel.repository.TemporadaRepository;
 import com.padel.rankpadel.repository.TorneoRepository;
 import com.padel.rankpadel.util.BracketSeeder;
 
@@ -50,6 +53,8 @@ public class SorteoService {
     private final PartidoRepository partidoRepository;
     private final RondaEliminatoriasRepository rondaEliminatoriasRepository;
     private final RankingEntryRepository rankingEntryRepository;
+    private final ConfiguracionCategoriaTorneoRepository configuracionCategoriaTorneoRepository;
+    private final TemporadaRepository temporadaRepository;
 
     public void generarSorteo(Long torneoId) {
         Torneo torneo = torneoRepository.findById(torneoId)
@@ -60,14 +65,16 @@ public class SorteoService {
         }
 
         for (Categoria categoria : torneo.getCategorias()) {
+            ConfiguracionCategoriaTorneo config = resolverConfig(torneo, categoria);
+
             List<Pareja> parejas = parejaRepository
                     .findByTorneoIdAndCategoriaId(torneoId, categoria.getId());
 
-            if (TipoSorteo.ALEATORIO.equals(torneo.getTipoSorteo())) {
+            if (TipoSorteo.ALEATORIO.equals(config.getTipoSorteo())) {
                 parejas.forEach(p -> p.setEsCabezaDeSerie(false));
                 parejaRepository.saveAll(parejas);
-            } else if (TipoSorteo.CABEZAS_SERIE.equals(torneo.getTipoSorteo())) {
-                asignarCabezasDeSerieAutomatico(parejas, categoria.getId());
+            } else if (TipoSorteo.CABEZAS_SERIE.equals(config.getTipoSorteo())) {
+                asignarCabezasDeSerieAutomatico(parejas, categoria.getId(), calcularCantidadCabezas(config, parejas.size()));
             }
 
             if (parejas.size() < 2) {
@@ -75,22 +82,19 @@ public class SorteoService {
                     "La categoría '" + categoria.getNombre() + "' debe tener al menos 2 parejas para sortear. Actual: " + parejas.size());
             }
 
-            if (!torneo.isIncluyeFaseGrupos() && !torneo.isIncluyeEliminacion()) {
-                throw new EstadoInvalidoException("La plantilla del torneo debe incluir fase de grupos o eliminación");
+            if (!config.isIncluyeFaseGrupos() && !config.isIncluyeEliminacion()) {
+                throw new EstadoInvalidoException(
+                    "La configuración de la categoría '" + categoria.getNombre() + "' debe incluir fase de grupos o eliminación");
             }
 
-            if (torneo.getFormato().equals(FormatoTorneo.LIGA)) {
+            if (config.getFormato() == FormatoTorneo.LIGA) {
                 generarLiga(torneo, categoria, parejas);
                 continue;
             }
 
-            boolean usarGrupos = torneo.isIncluyeFaseGrupos()
-                    && !torneo.getFormato().equals(FormatoTorneo.ELIMINACION_DIRECTA)
-                    && (parejas.size() >= 3 || !torneo.isIncluyeEliminacion());
-
-            if (usarGrupos) {
-                generarFaseGrupos(torneo, categoria, parejas);
-            } else if (torneo.isIncluyeEliminacion()) {
+            if (usaFaseGrupos(config, parejas.size())) {
+                generarFaseGrupos(torneo, config, categoria, parejas);
+            } else if (config.isIncluyeEliminacion()) {
                 generarBracket(torneo, categoria, parejas);
             } else {
                 throw new EstadoInvalidoException("No hay una fase disponible para sortear la categoría '" + categoria.getNombre() + "'");
@@ -101,23 +105,75 @@ public class SorteoService {
         torneoRepository.save(torneo);
     }
 
-    private void asignarCabezasDeSerieAutomatico(List<Pareja> parejas, Long categoriaId) {
+    private ConfiguracionCategoriaTorneo resolverConfig(Torneo torneo, Categoria categoria) {
+        return configuracionCategoriaTorneoRepository
+                .findByTorneoIdAndCategoriaId(torneo.getId(), categoria.getId())
+                .orElseGet(() -> ConfiguracionCategoriaTorneo.builder()
+                        .formato(torneo.getFormato())
+                        .tipoSorteo(torneo.getTipoSorteo())
+                        .cantidadParejasObjetivo(torneo.getCantidadParejasObjetivo())
+                        .cantidadGrupos(torneo.getCantidadGrupos())
+                        .parejasPorGrupo(torneo.getParejasPorGrupo())
+                        .avanzanPorGrupo(torneo.getAvanzanPorGrupo())
+                        .incluyeFaseGrupos(torneo.isIncluyeFaseGrupos())
+                        .incluyeEliminacion(torneo.isIncluyeEliminacion())
+                        .mejorDeSets(torneo.getMejorDeSets())
+                        .build());
+    }
+
+    private void asignarCabezasDeSerieAutomatico(List<Pareja> parejas, Long categoriaId, int cantidadCabezas) {
+        Long temporadaId = temporadaRepository.findFirstByActivaTrue()
+                .map(com.padel.rankpadel.entity.Temporada::getId)
+                .orElse(null);
         parejas.sort(Comparator.comparingInt((Pareja p) -> {
-            int pts1 = rankingEntryRepository
-                    .findByJugadorIdAndCategoriaIdAndTemporadaIsNull(p.getJugador1().getId(), categoriaId)
-                    .map(RankingEntry::getPuntosTotales).orElse(0);
-            int pts2 = rankingEntryRepository
-                    .findByJugadorIdAndCategoriaIdAndTemporadaIsNull(p.getJugador2().getId(), categoriaId)
-                    .map(RankingEntry::getPuntosTotales).orElse(0);
+            int pts1 = puntosJugador(p.getJugador1().getId(), categoriaId, temporadaId);
+            int pts2 = puntosJugador(p.getJugador2().getId(), categoriaId, temporadaId);
             return pts1 + pts2;
         }).reversed());
 
-        int numSeeds = Math.min(4, Math.max(2, parejas.size() / 4));
-
+        int seeds = Math.min(cantidadCabezas, parejas.size());
         for (int i = 0; i < parejas.size(); i++) {
-            parejas.get(i).setEsCabezaDeSerie(i < numSeeds);
+            parejas.get(i).setEsCabezaDeSerie(i < seeds);
         }
         parejaRepository.saveAll(parejas);
+    }
+
+    private int puntosJugador(Long jugadorId, Long categoriaId, Long temporadaId) {
+        if (temporadaId == null) {
+            return 0;
+        }
+        return rankingEntryRepository
+                .findByJugadorIdAndCategoriaIdAndTemporadaId(jugadorId, categoriaId, temporadaId)
+                .map(RankingEntry::getPuntosTotales).orElse(0);
+    }
+
+    private boolean usaFaseGrupos(ConfiguracionCategoriaTorneo config, int cantidadParejas) {
+        return config.isIncluyeFaseGrupos()
+                && config.getFormato() != FormatoTorneo.ELIMINACION_DIRECTA
+                && (cantidadParejas >= 3 || !config.isIncluyeEliminacion());
+    }
+
+    private int calcularNumGrupos(ConfiguracionCategoriaTorneo config, int cantidadParejas) {
+        Integer configGrupos = config.getCantidadGrupos();
+        int minimoGrupos = config.isIncluyeEliminacion() ? 2 : 1;
+        int numGrupos = configGrupos != null && configGrupos >= minimoGrupos
+                ? configGrupos
+                : Math.max(minimoGrupos, (int) Math.ceil((double) cantidadParejas / 4));
+        if (numGrupos > cantidadParejas) {
+            numGrupos = Math.max(minimoGrupos, (int) Math.ceil((double) cantidadParejas / 4));
+        }
+        return numGrupos;
+    }
+
+    private int calcularCantidadCabezas(ConfiguracionCategoriaTorneo config, int cantidadParejas) {
+        if (config.getFormato() == FormatoTorneo.LIGA) {
+            return 0;
+        }
+        if (usaFaseGrupos(config, cantidadParejas)) {
+            return calcularNumGrupos(config, cantidadParejas);
+        }
+        int seeds = Math.max(2, Integer.highestOneBit(Math.max(1, cantidadParejas / 2)));
+        return Math.min(8, Math.min(seeds, cantidadParejas));
     }
 
     private void generarLiga(Torneo torneo, Categoria categoria, List<Pareja> parejas) {
@@ -143,7 +199,7 @@ public class SorteoService {
         partidoRepository.saveAll(generarPartidosRoundRobin(parejas, grupo, torneo));
     }
 
-    private void generarFaseGrupos(Torneo torneo, Categoria categoria, List<Pareja> parejas) {
+    private void generarFaseGrupos(Torneo torneo, ConfiguracionCategoriaTorneo config, Categoria categoria, List<Pareja> parejas) {
         List<Pareja> cabezas = parejas.stream()
                 .filter(Pareja::isEsCabezaDeSerie)
                 .collect(Collectors.toCollection(ArrayList::new));
@@ -151,15 +207,7 @@ public class SorteoService {
                 .filter(p -> !p.isEsCabezaDeSerie())
                 .collect(Collectors.toCollection(ArrayList::new));
 
-        Integer configGrupos = torneo.getCantidadGrupos();
-        int minimoGrupos = torneo.isIncluyeEliminacion() ? 2 : 1;
-        int numGrupos = configGrupos != null && configGrupos >= minimoGrupos
-                ? configGrupos
-                : Math.max(minimoGrupos, (int) Math.ceil((double) parejas.size() / 4));
-
-        if (numGrupos > parejas.size()) {
-            numGrupos = Math.max(minimoGrupos, (int) Math.ceil((double) parejas.size() / 4));
-        }
+        int numGrupos = calcularNumGrupos(config, parejas.size());
 
         List<Grupo> grupos = new ArrayList<>();
         for (int i = 0; i < numGrupos; i++) {
@@ -241,6 +289,8 @@ public class SorteoService {
 
     private String nombreRonda(int tamano) {
         return switch (tamano) {
+            case 64 -> "Treintaidosavos de final";
+            case 32 -> "Dieciseisavos de final";
             case 16 -> "Octavos de final";
             case 8 -> "Cuartos de final";
             case 4 -> "Semifinales";

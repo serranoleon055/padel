@@ -19,6 +19,7 @@ public class PlantillaPuntosMapper {
         PlantillaPuntos plantilla = PlantillaPuntos.builder()
                 .nombre(request.getNombre())
                 .descripcion(request.getDescripcion())
+                .formatoTorneo(request.getFormatoTorneo())
                 .activo(request.isActivo())
                 .build();
         plantilla.reemplazarRondas(mapearRondasRequest(request.getRondas()));
@@ -30,6 +31,7 @@ public class PlantillaPuntosMapper {
                 .id(plantilla.getId())
                 .nombre(plantilla.getNombre())
                 .descripcion(plantilla.getDescripcion())
+                .formatoTorneo(plantilla.getFormatoTorneo())
                 .activo(plantilla.isActivo())
                 .rondas(mapearRondasResponse(plantilla.getRondas()))
                 .build();
@@ -38,6 +40,7 @@ public class PlantillaPuntosMapper {
     public void actualizarEntidad(PlantillaPuntos plantilla, PlantillaPuntosRequest request) {
         plantilla.setNombre(request.getNombre());
         plantilla.setDescripcion(request.getDescripcion());
+        plantilla.setFormatoTorneo(request.getFormatoTorneo());
         plantilla.setActivo(request.isActivo());
         plantilla.reemplazarRondas(mapearRondasRequest(request.getRondas()));
     }

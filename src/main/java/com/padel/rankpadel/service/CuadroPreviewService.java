@@ -8,9 +8,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.padel.rankpadel.dto.response.CrucePreviewResponse;
+import com.padel.rankpadel.entity.ConfiguracionCategoriaTorneo;
 import com.padel.rankpadel.entity.Grupo;
 import com.padel.rankpadel.entity.Torneo;
 import com.padel.rankpadel.exception.ResourceNotFoundException;
+import com.padel.rankpadel.repository.ConfiguracionCategoriaTorneoRepository;
 import com.padel.rankpadel.repository.GrupoRepository;
 import com.padel.rankpadel.repository.RondaEliminatoriasRepository;
 import com.padel.rankpadel.repository.TorneoRepository;
@@ -25,13 +27,19 @@ public class CuadroPreviewService {
     private final TorneoRepository torneoRepository;
     private final GrupoRepository grupoRepository;
     private final RondaEliminatoriasRepository rondaEliminatoriasRepository;
+    private final ConfiguracionCategoriaTorneoRepository configuracionCategoriaTorneoRepository;
 
     @Transactional(readOnly = true)
     public List<CrucePreviewResponse> previsualizar(Long torneoId, Long categoriaId) {
         Torneo torneo = torneoRepository.findById(torneoId)
                 .orElseThrow(() -> new ResourceNotFoundException("Torneo", torneoId));
 
-        if (!torneo.isIncluyeFaseGrupos() || !torneo.isIncluyeEliminacion()) {
+        ConfiguracionCategoriaTorneo config = configuracionCategoriaTorneoRepository
+                .findByTorneoIdAndCategoriaId(torneoId, categoriaId).orElse(null);
+
+        boolean incluyeFaseGrupos = config != null ? config.isIncluyeFaseGrupos() : torneo.isIncluyeFaseGrupos();
+        boolean incluyeEliminacion = config != null ? config.isIncluyeEliminacion() : torneo.isIncluyeEliminacion();
+        if (!incluyeFaseGrupos || !incluyeEliminacion) {
             return List.of();
         }
 
@@ -46,12 +54,15 @@ public class CuadroPreviewService {
             return List.of();
         }
 
-        int avanzan = torneo.getAvanzanPorGrupo() != null ? torneo.getAvanzanPorGrupo() : 1;
+        Integer avanzanConfig = config != null ? config.getAvanzanPorGrupo() : torneo.getAvanzanPorGrupo();
+        int avanzan = avanzanConfig != null ? avanzanConfig : 1;
 
         List<String> clasificados = new ArrayList<>();
+        List<Long> grupoPorClasificado = new ArrayList<>();
         for (int posicion = 1; posicion <= avanzan; posicion++) {
             for (Grupo grupo : grupos) {
                 clasificados.add(posicion + "° " + grupo.getNombre());
+                grupoPorClasificado.add(grupo.getId() != null ? grupo.getId() : 0L);
             }
         }
         if (clasificados.size() < 2) {
@@ -62,19 +73,17 @@ public class CuadroPreviewService {
         while (tamano < clasificados.size()) {
             tamano *= 2;
         }
-
-        List<String> ranurados = new ArrayList<>();
-        for (int i = 0; i < tamano; i++) {
-            ranurados.add(i < clasificados.size() ? clasificados.get(i) : null);
-        }
-
-        int[] orden = BracketSeeder.ordenDeSiembra(tamano);
         String ronda = nombreRonda(tamano);
 
+        long[] grupoIds = new long[grupoPorClasificado.size()];
+        for (int i = 0; i < grupoIds.length; i++) {
+            grupoIds[i] = grupoPorClasificado.get(i);
+        }
+
         List<CrucePreviewResponse> cruces = new ArrayList<>();
-        for (int i = 0; i + 1 < orden.length; i += 2) {
-            String a = ranurados.get(orden[i] - 1);
-            String b = ranurados.get(orden[i + 1] - 1);
+        for (int[] par : BracketSeeder.emparejarIndices(clasificados.size(), grupoIds)) {
+            String a = par[0] >= 0 ? clasificados.get(par[0]) : null;
+            String b = par[1] >= 0 ? clasificados.get(par[1]) : null;
             String local = a != null ? a : b;
             String visitante = a != null ? b : null;
             cruces.add(CrucePreviewResponse.builder()

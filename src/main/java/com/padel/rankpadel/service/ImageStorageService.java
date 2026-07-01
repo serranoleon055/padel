@@ -54,6 +54,10 @@ public class ImageStorageService {
         return guardar("torneos", "torneo-" + torneoId, file);
     }
 
+    public String guardarGaleriaSede(MultipartFile file) {
+        return guardar("sede", "galeria", file);
+    }
+
     private String guardar(String carpeta, String prefijo, MultipartFile file) {
         validar(file);
 

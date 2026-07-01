@@ -39,6 +39,9 @@ public class TemporadaService {
     public TemporadaResponse crear(TemporadaRequest temporadaRequest) {
         Temporada temporada = temporadaMapper.requestToTemporada(temporadaRequest);
         temporadaRepository.save(temporada);
+        if (temporada.isActiva()) {
+            desactivarOtras(temporada.getId());
+        }
         return temporadaMapper.temporadaToResponse(temporada);
     }
 
@@ -51,7 +54,18 @@ public class TemporadaService {
         temporada.setFechaFin(temporadaRequest.getFechaFin());
         temporada.setActiva(temporadaRequest.isActiva());
         temporadaRepository.save(temporada);
+        if (temporada.isActiva()) {
+            desactivarOtras(temporada.getId());
+        }
         return temporadaMapper.temporadaToResponse(temporada);
+    }
+
+    private void desactivarOtras(Long idActiva) {
+        List<Temporada> activas = temporadaRepository.findByActivaTrue().stream()
+                .filter(temporada -> !temporada.getId().equals(idActiva))
+                .collect(Collectors.toList());
+        activas.forEach(temporada -> temporada.setActiva(false));
+        temporadaRepository.saveAll(activas);
     }
 
     @Transactional

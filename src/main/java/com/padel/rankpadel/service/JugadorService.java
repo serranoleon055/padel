@@ -5,6 +5,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
@@ -23,6 +24,7 @@ import com.padel.rankpadel.entity.Pareja;
 import com.padel.rankpadel.entity.Partido;
 import com.padel.rankpadel.entity.RondaEliminatorias;
 import com.padel.rankpadel.enums.FasePartido;
+import com.padel.rankpadel.exception.EstadoInvalidoException;
 import com.padel.rankpadel.exception.ResourceNotFoundException;
 import com.padel.rankpadel.mapper.JugadorMapper;
 import com.padel.rankpadel.mapper.PartidoMapper;
@@ -110,6 +112,12 @@ public class JugadorService {
                     .orElseThrow(() -> new ResourceNotFoundException("Categoria", request.getCategoriaId()));
         }
 
+        String nombreNormalizado = NormalizadorTexto.normalizarNombre(request.getNombre(), request.getApellido());
+        if (jugadorRepository.existsByActivoTrueAndNombreNormalizado(nombreNormalizado)) {
+            throw new EstadoInvalidoException("Ya existe un jugador llamado \"" + request.getNombre() + " "
+                    + request.getApellido() + "\". Usá un nombre distinto o editá el existente.");
+        }
+
         Jugador jugador = jugadorMapper.requestToJugador(request, categoria);
 
         jugadorRepository.save(jugador);
@@ -121,6 +129,12 @@ public class JugadorService {
     public JugadorResponse actualizar(Long id, JugadorRequest request) {
         Jugador jugadorExistente = jugadorRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Jugador", id));
+
+        String nombreNormalizado = NormalizadorTexto.normalizarNombre(request.getNombre(), request.getApellido());
+        if (jugadorRepository.existsByActivoTrueAndNombreNormalizadoAndIdNot(nombreNormalizado, id)) {
+            throw new EstadoInvalidoException("Ya existe otro jugador llamado \"" + request.getNombre() + " "
+                    + request.getApellido() + "\". Usá un nombre distinto.");
+        }
 
         Categoria categoria = null;
         if (request.getCategoriaId() != null) {
@@ -240,11 +254,35 @@ public class JugadorService {
         torneos.sort(Comparator.comparing(JugadorHistorialResponse.TorneoHistorialItem::getFechaInicio,
                 Comparator.nullsLast(Comparator.reverseOrder())));
 
+        Set<String> estadosAgenda = Set.of("INSCRIPCION", "SORTEADO", "EN_CURSO");
+        Map<Long, JugadorHistorialResponse.TorneoHistorialItem> agendaMap = new LinkedHashMap<>();
+        for (Pareja pareja : parejas) {
+            var torneo = pareja.getTorneo();
+            if (torneo == null || torneo.getEstado() == null) continue;
+            if (!estadosAgenda.contains(torneo.getEstado().name())) continue;
+            if (agendaMap.containsKey(torneo.getId())) continue;
+            agendaMap.put(torneo.getId(), JugadorHistorialResponse.TorneoHistorialItem.builder()
+                    .torneoId(torneo.getId())
+                    .torneoNombre(torneo.getNombre())
+                    .categoriaNombre(pareja.getCategoria() != null ? pareja.getCategoria().getNombre() : null)
+                    .estado(torneo.getEstado().name())
+                    .fechaInicio(torneo.getFechaInicio() != null ? torneo.getFechaInicio().toString() : null)
+                    .fechaFin(torneo.getFechaFin() != null ? torneo.getFechaFin().toString() : null)
+                    .fueGanador(false)
+                    .mejorRonda("—")
+                    .puntosObtenidos(0)
+                    .build());
+        }
+        List<JugadorHistorialResponse.TorneoHistorialItem> agenda = new ArrayList<>(agendaMap.values());
+        agenda.sort(Comparator.comparing(JugadorHistorialResponse.TorneoHistorialItem::getFechaInicio,
+                Comparator.nullsLast(Comparator.naturalOrder())));
+
         return JugadorHistorialResponse.builder()
                 .jugador(jugadorMapper.jugadorToResponse(jugador))
                 .ranking(ranking)
                 .partidos(partidos.stream().map(partidoMapper::partidoToResponse).collect(Collectors.toList()))
                 .torneos(torneos)
+                .agenda(agenda)
                 .build();
     }
 

@@ -11,6 +11,8 @@ public interface TemporadaRepository extends JpaRepository<Temporada, Long> {
 
     Optional<Temporada> findFirstByActivaTrue();
 
+    List<Temporada> findByActivaTrue();
+
     List<Temporada> findByArchivadoFalse();
 
 }

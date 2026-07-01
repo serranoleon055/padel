@@ -161,6 +161,20 @@ public class ReservaService {
     }
 
     @Transactional
+    public boolean liberarPorPagoFallido(List<Reserva> reservas) {
+        boolean liberadaAlguna = false;
+        for (Reserva reserva : reservas) {
+            Cancha cancha = reserva.getCancha();
+            boolean exigeSenia = cancha == null || cancha.isSeniaObligatoria();
+            if (reserva.getEstado() == EstadoReserva.PENDIENTE && exigeSenia) {
+                liberar(reserva, EstadoReserva.CANCELADA);
+                liberadaAlguna = true;
+            }
+        }
+        return liberadaAlguna;
+    }
+
+    @Transactional
     public int expirarPendientesVencidas() {
         List<Reserva> vencidas = reservaRepository
                 .findByEstadoAndExpiraEnBefore(EstadoReserva.PENDIENTE, LocalDateTime.now());
@@ -168,6 +182,17 @@ public class ReservaService {
             liberar(reserva, EstadoReserva.EXPIRADA);
         }
         return vencidas.size();
+    }
+
+    @Transactional
+    public int finalizarTurnosPasados() {
+        List<Reserva> pasadas = reservaRepository.findConfirmadasFinalizadas(
+                EstadoReserva.CONFIRMADA, LocalDate.now(), LocalTime.now());
+        for (Reserva reserva : pasadas) {
+            reserva.setEstado(EstadoReserva.FINALIZADA);
+            reservaRepository.save(reserva);
+        }
+        return pasadas.size();
     }
 
     @Transactional(readOnly = true)

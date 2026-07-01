@@ -24,16 +24,33 @@ import com.mercadopago.client.preference.PreferenceRequest;
 import com.mercadopago.exceptions.MPApiException;
 import com.mercadopago.exceptions.MPException;
 import com.mercadopago.resources.preference.Preference;
+import com.padel.rankpadel.entity.ConfiguracionSede;
 import com.padel.rankpadel.exception.EstadoInvalidoException;
+import com.padel.rankpadel.repository.ConfiguracionSedeRepository;
 
 @Service
 public class MercadoPagoService {
 
     @Value("${app.mercadopago.access-token:}")
-    private String accessToken;
+    private String accessTokenEnv;
 
+    private final ConfiguracionSedeRepository configuracionSedeRepository;
     private final HttpClient httpClient = HttpClient.newHttpClient();
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    public MercadoPagoService(ConfiguracionSedeRepository configuracionSedeRepository) {
+        this.configuracionSedeRepository = configuracionSedeRepository;
+    }
+
+    private String resolverAccessToken() {
+        String desdeConfig = configuracionSedeRepository.findById(1L)
+                .map(ConfiguracionSede::getMercadoPagoAccessToken)
+                .orElse(null);
+        if (desdeConfig != null && !desdeConfig.isBlank()) {
+            return desdeConfig;
+        }
+        return accessTokenEnv;
+    }
 
     public record PreferenciaCreada(String id, String initPoint) {
     }
@@ -96,6 +113,7 @@ public class MercadoPagoService {
     }
 
     private JsonNode consultar(String url) {
+        String accessToken = resolverAccessToken();
         if (accessToken == null || accessToken.isBlank()) {
             throw new EstadoInvalidoException("Los pagos online no están configurados");
         }
@@ -124,6 +142,7 @@ public class MercadoPagoService {
     }
 
     private void aplicarToken() {
+        String accessToken = resolverAccessToken();
         if (accessToken == null || accessToken.isBlank()) {
             throw new EstadoInvalidoException("Los pagos online no están configurados");
         }

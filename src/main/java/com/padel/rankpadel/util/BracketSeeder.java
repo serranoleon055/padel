@@ -47,6 +47,65 @@ public final class BracketSeeder {
         return matches;
     }
 
+    public static List<Match> sembrarPorPosicion(List<Pareja> clasificados) {
+        long[] grupoIds = new long[clasificados.size()];
+        for (int i = 0; i < clasificados.size(); i++) {
+            Pareja pareja = clasificados.get(i);
+            grupoIds[i] = (pareja.getGrupo() != null && pareja.getGrupo().getId() != null)
+                    ? pareja.getGrupo().getId()
+                    : 0L;
+        }
+
+        List<Match> matches = new ArrayList<>();
+        for (int[] par : emparejarIndices(clasificados.size(), grupoIds)) {
+            Pareja local = par[0] >= 0 ? clasificados.get(par[0]) : null;
+            Pareja visitante = par[1] >= 0 ? clasificados.get(par[1]) : null;
+            matches.add(new Match(local, visitante));
+        }
+        return matches;
+    }
+
+    public static List<int[]> emparejarIndices(int cantidad, long[] grupoIds) {
+        int n = 1;
+        while (n < cantidad) n *= 2;
+        if (n < 2) n = 2;
+
+        int[] orden = seedSlots(n);
+        List<int[]> pares = new ArrayList<>();
+        for (int i = 0; i + 1 < orden.length; i += 2) {
+            int a = orden[i] - 1;
+            int b = orden[i + 1] - 1;
+            pares.add(new int[] { a < cantidad ? a : -1, b < cantidad ? b : -1 });
+        }
+        evitarMismoGrupoPorIndice(pares, grupoIds);
+        return pares;
+    }
+
+    private static void evitarMismoGrupoPorIndice(List<int[]> pares, long[] grupoIds) {
+        for (int i = 0; i < pares.size(); i++) {
+            int[] par = pares.get(i);
+            if (!mismoGrupoPorIndice(grupoIds, par[0], par[1])) continue;
+            for (int j = 0; j < pares.size(); j++) {
+                if (j == i) continue;
+                int[] otro = pares.get(j);
+                if (otro[1] < 0) continue;
+                if (!mismoGrupoPorIndice(grupoIds, par[0], otro[1])
+                        && !mismoGrupoPorIndice(grupoIds, otro[0], par[1])) {
+                    int tmp = par[1];
+                    par[1] = otro[1];
+                    otro[1] = tmp;
+                    break;
+                }
+            }
+        }
+    }
+
+    private static boolean mismoGrupoPorIndice(long[] grupoIds, int x, int y) {
+        if (x < 0 || y < 0) return false;
+        long grupoX = grupoIds[x];
+        return grupoX != 0 && grupoX == grupoIds[y];
+    }
+
     public static List<Partido> construirPartidos(List<Match> llave, Torneo torneo, RondaEliminatorias ronda) {
         List<Partido> partidos = new ArrayList<>();
         int orden = 0;

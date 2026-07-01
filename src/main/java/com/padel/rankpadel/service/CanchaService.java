@@ -51,6 +51,7 @@ public class CanchaService {
                 .lugar(lugar)
                 .precioPorHora(request.getPrecioPorHora())
                 .seniaPorcentaje(request.getSeniaPorcentaje())
+                .seniaObligatoria(request.isSeniaObligatoria())
                 .build();
         return toResponse(canchaRepository.save(cancha));
     }
@@ -66,6 +67,7 @@ public class CanchaService {
         cancha.setLugar(lugar);
         cancha.setPrecioPorHora(request.getPrecioPorHora());
         cancha.setSeniaPorcentaje(request.getSeniaPorcentaje());
+        cancha.setSeniaObligatoria(request.isSeniaObligatoria());
         return toResponse(canchaRepository.save(cancha));
     }
 
@@ -87,6 +89,7 @@ public class CanchaService {
                 .lugarNombre(c.getLugar() != null ? c.getLugar().getNombre() : null)
                 .precioPorHora(c.getPrecioPorHora())
                 .seniaPorcentaje(c.getSeniaPorcentaje())
+                .seniaObligatoria(c.isSeniaObligatoria())
                 .build();
     }
 

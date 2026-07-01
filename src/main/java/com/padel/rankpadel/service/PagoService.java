@@ -129,10 +129,39 @@ public class PagoService {
             return;
         }
         mercadoPagoService.obtenerPago(pagoMercadoPagoId).ifPresent(pagoMp -> {
-            if ("approved".equals(pagoMp.estado()) && pagoMp.referenciaExterna() != null) {
+            if (pagoMp.referenciaExterna() == null) {
+                return;
+            }
+            if ("approved".equals(pagoMp.estado())) {
                 confirmarPagoAprobado(pagoMp.referenciaExterna(), pagoMp.id());
+            } else if ("rejected".equals(pagoMp.estado()) || "cancelled".equals(pagoMp.estado())) {
+                rechazarPagoReserva(pagoMp.referenciaExterna());
             }
         });
+    }
+
+    @Transactional
+    public PagoResponse cancelarPagoReserva(Long pagoId) {
+        Pago pago = pagoRepository.findById(pagoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Pago", pagoId));
+        liberarReservaSiPagoNoAprobado(pago);
+        return aResponse(pago);
+    }
+
+    private void rechazarPagoReserva(String referenciaExterna) {
+        pagoRepository.findByReferenciaExterna(referenciaExterna)
+                .ifPresent(this::liberarReservaSiPagoNoAprobado);
+    }
+
+    private void liberarReservaSiPagoNoAprobado(Pago pago) {
+        if (pago.getConcepto() != ConceptoPago.RESERVA || pago.getEstado() == EstadoPago.APROBADO) {
+            return;
+        }
+        boolean liberada = reservaService.liberarPorPagoFallido(reservaRepository.findByPagoId(pago.getId()));
+        if (liberada && pago.getEstado() == EstadoPago.PENDIENTE) {
+            pago.setEstado(EstadoPago.RECHAZADO);
+            pagoRepository.save(pago);
+        }
     }
 
     @Transactional(readOnly = true)

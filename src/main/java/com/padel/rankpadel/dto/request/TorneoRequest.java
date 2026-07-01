@@ -80,4 +80,7 @@ public class TorneoRequest {
     @Builder.Default
     private List<ConfiguracionPuntosRequest> configuracionPuntos = new ArrayList<>();
 
+    @Builder.Default
+    private List<ConfiguracionCategoriaTorneoRequest> configuracionesCategoria = new ArrayList<>();
+
 }

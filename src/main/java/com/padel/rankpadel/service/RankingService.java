@@ -35,7 +35,9 @@ import com.padel.rankpadel.util.NormalizadorRonda;
 
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -57,80 +59,92 @@ public class RankingService {
             EstadoPartido.WALKOVER, EstadoPartido.RETIRO);
 
     public void actualizarRanking(Partido partido) {
-
         if (!partido.getTorneo().isSumaPuntosRanking())
             return;
 
-        String nombreRonda = partido.getFase().equals(FasePartido.GRUPOS)
-                ? "Grupos"
-                : partido.getRonda().getNombre();
+        Categoria categoria = categoriaDePartido(partido);
+        if (categoria == null)
+            return;
 
-        Optional<ConfiguracionPuntos> config = buscarConfigPorRonda(partido.getTorneo().getId(), nombreRonda);
+        recalcularRankingCategoria(categoria);
+    }
 
-        int puntosGanador = config.map(ConfiguracionPuntos::getPuntosGanador).orElse(0);
-        int puntosPerdedor = config.map(ConfiguracionPuntos::getPuntosPerdedor).orElse(0);
+    public void recalcularRankingCategoria(Categoria categoria) {
+        Optional<Temporada> temporadaActivaOpt = temporadaRepository.findFirstByActivaTrue();
+        if (temporadaActivaOpt.isEmpty()) {
+            return;
+        }
+        Temporada temporada = temporadaActivaOpt.get();
 
-        Pareja ganador = partido.getGanador();
-        Pareja perdedor = ganador.getId().equals(partido.getLocal().getId())
-                ? partido.getVisitante()
-                : partido.getLocal();
+        resetearEntradas(rankingEntryRepository.findByCategoriaIdAndTemporadaId(categoria.getId(), temporada.getId()));
 
-        Optional<Temporada> temporadaActiva = temporadaRepository.findFirstByActivaTrue();
+        List<Partido> partidos = ordenarCronologicamente(partidoRepository.findPartidosQueSumanPuntos().stream()
+                .filter(partido -> esDeCategoria(partido, categoria.getId()))
+                .collect(Collectors.toList()));
 
-        asignarPuntos(ganador.getJugador1(), ganador.getCategoria(), partido.getTorneo(), puntosGanador, true, null);
-        asignarPuntos(ganador.getJugador2(), ganador.getCategoria(), partido.getTorneo(), puntosGanador, true, null);
-        asignarPuntos(perdedor.getJugador1(), perdedor.getCategoria(), partido.getTorneo(), puntosPerdedor, false,
-                null);
-        asignarPuntos(perdedor.getJugador2(), perdedor.getCategoria(), partido.getTorneo(), puntosPerdedor, false,
-                null);
+        for (Partido partido : partidos) {
+            String nombreRonda = partido.getFase().equals(FasePartido.GRUPOS)
+                    ? "Grupos"
+                    : partido.getRonda().getNombre();
 
-        temporadaActiva.ifPresent(temporada -> {
-            asignarPuntos(ganador.getJugador1(), ganador.getCategoria(), partido.getTorneo(), puntosGanador, true,
-                    temporada);
-            asignarPuntos(ganador.getJugador2(), ganador.getCategoria(), partido.getTorneo(), puntosGanador, true,
-                    temporada);
-            asignarPuntos(perdedor.getJugador1(), perdedor.getCategoria(), partido.getTorneo(), puntosPerdedor, false,
-                    temporada);
-            asignarPuntos(perdedor.getJugador2(), perdedor.getCategoria(), partido.getTorneo(), puntosPerdedor, false,
-                    temporada);
-            recalcularPosiciones(ganador.getCategoria(), temporada);
-        });
+            Optional<ConfiguracionPuntos> config = buscarConfigPorRonda(partido.getTorneo().getId(), categoria.getId(), nombreRonda);
+            int puntosGanador = config.map(ConfiguracionPuntos::getPuntosGanador).orElse(0);
+            int puntosPerdedor = config.map(ConfiguracionPuntos::getPuntosPerdedor).orElse(0);
 
-        recalcularPosiciones(ganador.getCategoria(), null);
+            Pareja ganador = partido.getGanador();
+            Pareja perdedor = ganador.getId().equals(partido.getLocal().getId())
+                    ? partido.getVisitante()
+                    : partido.getLocal();
+
+            asignarPuntos(ganador.getJugador1(), ganador.getCategoria(), partido.getTorneo(), puntosGanador, true, temporada);
+            asignarPuntos(ganador.getJugador2(), ganador.getCategoria(), partido.getTorneo(), puntosGanador, true, temporada);
+            asignarPuntos(perdedor.getJugador1(), perdedor.getCategoria(), partido.getTorneo(), puntosPerdedor, false, temporada);
+            asignarPuntos(perdedor.getJugador2(), perdedor.getCategoria(), partido.getTorneo(), puntosPerdedor, false, temporada);
+        }
+
+        recalcularPosiciones(categoria, temporada);
+    }
+
+    private void resetearEntradas(List<RankingEntry> entradas) {
+        for (RankingEntry entrada : entradas) {
+            entrada.setPuntosTotales(0);
+            entrada.setVictorias(0);
+            entrada.setDerrotas(0);
+        }
+        rankingEntryRepository.saveAll(entradas);
+    }
+
+    private Categoria categoriaDePartido(Partido partido) {
+        Pareja referencia = partido.getLocal() != null ? partido.getLocal() : partido.getGanador();
+        return referencia != null ? referencia.getCategoria() : null;
+    }
+
+    private boolean esDeCategoria(Partido partido, Long categoriaId) {
+        try {
+            Pareja local = partido.getLocal();
+            if (local != null && local.getCategoria() != null && categoriaId.equals(local.getCategoria().getId()))
+                return true;
+            Pareja ganador = partido.getGanador();
+            return ganador != null && ganador.getCategoria() != null && categoriaId.equals(ganador.getCategoria().getId());
+        } catch (EntityNotFoundException e) {
+            return false;
+        }
     }
 
     public List<RankingResponse> obtenerRanking(Long categoriaId, Genero genero) {
         Optional<Temporada> temporadaActiva = temporadaRepository.findFirstByActivaTrue();
+        if (temporadaActiva.isEmpty()) {
+            return List.of();
+        }
+        Long temporadaId = temporadaActiva.get().getId();
 
         List<RankingEntry> entradas;
-
-        if (temporadaActiva.isPresent()) {
-            Long temporadaId = temporadaActiva.get().getId();
-            if (categoriaId != null) {
-                entradas = rankingEntryRepository.findByCategoriaIdAndTemporadaId(categoriaId, temporadaId);
-            } else if (genero != null) {
-                entradas = rankingEntryRepository.findByCategoriaGeneroAndTemporadaId(genero, temporadaId);
-            } else {
-                entradas = rankingEntryRepository.findByTemporadaId(temporadaId);
-            }
+        if (categoriaId != null) {
+            entradas = rankingEntryRepository.findByCategoriaIdAndTemporadaId(categoriaId, temporadaId);
+        } else if (genero != null) {
+            entradas = rankingEntryRepository.findByCategoriaGeneroAndTemporadaId(genero, temporadaId);
         } else {
-            if (categoriaId != null) {
-                entradas = rankingEntryRepository.findByCategoriaIdAndTemporadaIsNull(categoriaId);
-            } else if (genero != null) {
-                entradas = rankingEntryRepository.findByCategoriaGeneroAndTemporadaIsNull(genero);
-            } else {
-                entradas = rankingEntryRepository.findByTemporadaIsNull();
-            }
-        }
-
-        if (entradas.isEmpty() && temporadaActiva.isPresent()) {
-            if (categoriaId != null) {
-                entradas = rankingEntryRepository.findByCategoriaIdAndTemporadaIsNull(categoriaId);
-            } else if (genero != null) {
-                entradas = rankingEntryRepository.findByCategoriaGeneroAndTemporadaIsNull(genero);
-            } else {
-                entradas = rankingEntryRepository.findByTemporadaIsNull();
-            }
+            entradas = rankingEntryRepository.findByTemporadaId(temporadaId);
         }
 
         entradas.sort(ORDEN_RANKING);
@@ -157,7 +171,9 @@ public class RankingService {
                     .categoriaId(e.getCategoria().getId())
                     .categoriaNombre(e.getCategoria().getNombre())
                     .puntosTotales(e.getPuntosTotales())
-                    .torneosJugados(conteoTorneos.getOrDefault(jugador.getId() + ":" + e.getCategoria().getId(), 0))
+                    .torneosJugados(incluirTorneosJugados
+                            ? conteoTorneos.getOrDefault(jugador.getId() + ":" + e.getCategoria().getId(), 0)
+                            : e.getTorneosJugados())
                     .victorias(e.getVictorias())
                     .derrotas(e.getDerrotas())
                     .tendencia(formatearTendencia(e))
@@ -168,14 +184,19 @@ public class RankingService {
     }
 
     public int recalcularPuntos() {
-        List<RankingEntry> entradas = rankingEntryRepository.findAll();
+        Optional<Temporada> temporadaActivaOpt = temporadaRepository.findFirstByActivaTrue();
+        if (temporadaActivaOpt.isEmpty()) {
+            return 0;
+        }
+        Temporada temporada = temporadaActivaOpt.get();
+
+        List<RankingEntry> entradas = rankingEntryRepository.findByTemporadaId(temporada.getId());
         for (RankingEntry entrada : entradas) {
             entrada.setPuntosTotales(0);
         }
         rankingEntryRepository.saveAll(entradas);
 
-        Optional<Temporada> temporadaActiva = temporadaRepository.findFirstByActivaTrue();
-        List<Partido> partidos = partidoRepository.findPartidosQueSumanPuntos();
+        List<Partido> partidos = ordenarCronologicamente(partidoRepository.findPartidosQueSumanPuntos());
         Set<Categoria> categoriasAfectadas = new HashSet<>();
 
         for (Partido partido : partidos) {
@@ -183,7 +204,7 @@ public class RankingService {
                     ? "Grupos"
                     : partido.getRonda().getNombre();
 
-            Optional<ConfiguracionPuntos> config = buscarConfigPorRonda(partido.getTorneo().getId(), nombreRonda);
+            Optional<ConfiguracionPuntos> config = buscarConfigPorRonda(partido.getTorneo().getId(), categoriaIdDeGanador(partido), nombreRonda);
             int puntosGanador = config.map(ConfiguracionPuntos::getPuntosGanador).orElse(0);
             int puntosPerdedor = config.map(ConfiguracionPuntos::getPuntosPerdedor).orElse(0);
 
@@ -192,19 +213,14 @@ public class RankingService {
                     ? partido.getVisitante()
                     : partido.getLocal();
 
-            sumarPuntos(ganador, puntosGanador, null);
-            sumarPuntos(perdedor, puntosPerdedor, null);
-            temporadaActiva.ifPresent(temporada -> {
-                sumarPuntos(ganador, puntosGanador, temporada);
-                sumarPuntos(perdedor, puntosPerdedor, temporada);
-            });
+            sumarPuntos(ganador, puntosGanador, temporada);
+            sumarPuntos(perdedor, puntosPerdedor, temporada);
 
             categoriasAfectadas.add(ganador.getCategoria());
         }
 
         for (Categoria categoria : categoriasAfectadas) {
-            recalcularPosiciones(categoria, null);
-            temporadaActiva.ifPresent(temporada -> recalcularPosiciones(categoria, temporada));
+            recalcularPosiciones(categoria, temporada);
         }
 
         return partidos.size();
@@ -225,16 +241,35 @@ public class RankingService {
                                 temporada.getId())
                         .orElseGet(() -> nuevaEntrada(jugador, pareja.getCategoria(), temporada));
             }
-            entrada.setPuntosTotales(Math.max(0, entrada.getPuntosTotales() + puntos));
+            entrada.setPuntosTotales(sumarConPiso(entrada.getPuntosTotales(), puntos));
             rankingEntryRepository.save(entrada);
         }
     }
 
-    private Optional<ConfiguracionPuntos> buscarConfigPorRonda(Long torneoId, String nombreRonda) {
+    private static int sumarConPiso(int actual, int delta) {
+        return Math.max(0, actual + delta);
+    }
+
+    private static List<Partido> ordenarCronologicamente(List<Partido> partidos) {
+        return partidos.stream()
+                .sorted(Comparator.comparing(Partido::getFechaHora, Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(Partido::getId, Comparator.nullsLast(Comparator.naturalOrder())))
+                .collect(Collectors.toList());
+    }
+
+    private Optional<ConfiguracionPuntos> buscarConfigPorRonda(Long torneoId, Long categoriaId, String nombreRonda) {
         String clave = NormalizadorRonda.normalizar(nombreRonda);
-        return configuracionPuntosRepository.findByTorneoIdOrderByOrden(torneoId).stream()
+        return configuracionPuntosRepository.findByTorneoIdAndCategoriaIdOrderByOrden(torneoId, categoriaId).stream()
                 .filter(config -> NormalizadorRonda.normalizar(config.getNombreRonda()).equals(clave))
                 .findFirst();
+    }
+
+    private Long categoriaIdDeGanador(Partido partido) {
+        Pareja ganador = partido.getGanador();
+        if (ganador == null || ganador.getCategoria() == null) {
+            return null;
+        }
+        return ganador.getCategoria().getId();
     }
 
     private Map<String, Integer> construirConteoTorneos(List<RankingEntry> entradas) {
@@ -315,7 +350,7 @@ public class RankingService {
                     .orElse(nuevaEntrada(jugador, categoria, temporada));
         }
 
-        entrada.setPuntosTotales(Math.max(0, entrada.getPuntosTotales() + puntos));
+        entrada.setPuntosTotales(sumarConPiso(entrada.getPuntosTotales(), puntos));
         if (esGanador)
             entrada.setVictorias(entrada.getVictorias() + 1);
         else
@@ -339,9 +374,13 @@ public class RankingService {
     }
 
     public void cerrarTorneo(Long torneoId) {
+        Optional<Temporada> temporadaActivaOpt = temporadaRepository.findFirstByActivaTrue();
+        if (temporadaActivaOpt.isEmpty()) {
+            return;
+        }
+        Temporada temporada = temporadaActivaOpt.get();
         List<Pareja> parejas = parejaRepository.findByTorneoId(torneoId);
         Set<Long> jugadoresVistos = new HashSet<>();
-        Optional<Temporada> temporadaActiva = temporadaRepository.findFirstByActivaTrue();
 
         for (Pareja pareja : parejas) {
             for (Jugador jugador : List.of(pareja.getJugador1(), pareja.getJugador2())) {
@@ -350,27 +389,24 @@ public class RankingService {
                 jugadoresVistos.add(jugador.getId());
 
                 rankingEntryRepository
-                        .findByJugadorIdAndCategoriaIdAndTemporadaIsNull(jugador.getId(), pareja.getCategoria().getId())
-                        .ifPresent(entrada -> {
-                            entrada.setTorneosJugados(entrada.getTorneosJugados() + 1);
-                            rankingEntryRepository.save(entrada);
-                        });
-
-                temporadaActiva.ifPresent(temporada -> rankingEntryRepository
                         .findByJugadorIdAndCategoriaIdAndTemporadaId(jugador.getId(), pareja.getCategoria().getId(),
                                 temporada.getId())
                         .ifPresent(entrada -> {
                             entrada.setTorneosJugados(entrada.getTorneosJugados() + 1);
                             rankingEntryRepository.save(entrada);
-                        }));
+                        });
             }
         }
     }
 
     public void reabrirTorneo(Long torneoId) {
+        Optional<Temporada> temporadaActivaOpt = temporadaRepository.findFirstByActivaTrue();
+        if (temporadaActivaOpt.isEmpty()) {
+            return;
+        }
+        Temporada temporada = temporadaActivaOpt.get();
         List<Pareja> parejas = parejaRepository.findByTorneoId(torneoId);
         Set<Long> jugadoresVistos = new HashSet<>();
-        Optional<Temporada> temporadaActiva = temporadaRepository.findFirstByActivaTrue();
 
         for (Pareja pareja : parejas) {
             for (Jugador jugador : List.of(pareja.getJugador1(), pareja.getJugador2())) {
@@ -379,19 +415,12 @@ public class RankingService {
                 jugadoresVistos.add(jugador.getId());
 
                 rankingEntryRepository
-                        .findByJugadorIdAndCategoriaIdAndTemporadaIsNull(jugador.getId(), pareja.getCategoria().getId())
-                        .ifPresent(entrada -> {
-                            entrada.setTorneosJugados(Math.max(0, entrada.getTorneosJugados() - 1));
-                            rankingEntryRepository.save(entrada);
-                        });
-
-                temporadaActiva.ifPresent(temporada -> rankingEntryRepository
                         .findByJugadorIdAndCategoriaIdAndTemporadaId(jugador.getId(), pareja.getCategoria().getId(),
                                 temporada.getId())
                         .ifPresent(entrada -> {
                             entrada.setTorneosJugados(Math.max(0, entrada.getTorneosJugados() - 1));
                             rankingEntryRepository.save(entrada);
-                        }));
+                        });
             }
         }
     }
@@ -399,50 +428,23 @@ public class RankingService {
     public void revertirRankingPartido(Partido partido) {
         if (!partido.getTorneo().isSumaPuntosRanking())
             return;
-        if (partido.getGanador() == null)
+
+        Categoria categoria = categoriaDePartido(partido);
+        if (categoria == null)
             return;
 
-        String nombreRonda = FasePartido.GRUPOS.equals(partido.getFase())
-                ? "Grupos"
-                : partido.getRonda().getNombre();
-
-        Optional<ConfiguracionPuntos> config = buscarConfigPorRonda(partido.getTorneo().getId(), nombreRonda);
-
-        int puntosGanador = config.map(ConfiguracionPuntos::getPuntosGanador).orElse(0);
-        int puntosPerdedor = config.map(ConfiguracionPuntos::getPuntosPerdedor).orElse(0);
-
-        Pareja ganador = partido.getGanador();
-        Pareja perdedor = ganador.getId().equals(partido.getLocal().getId())
-                ? partido.getVisitante()
-                : partido.getLocal();
-
-        Optional<Temporada> temporadaActiva = temporadaRepository.findFirstByActivaTrue();
-
-        restarPuntos(ganador.getJugador1(), ganador.getCategoria(), puntosGanador, true, null);
-        restarPuntos(ganador.getJugador2(), ganador.getCategoria(), puntosGanador, true, null);
-        restarPuntos(perdedor.getJugador1(), perdedor.getCategoria(), puntosPerdedor, false, null);
-        restarPuntos(perdedor.getJugador2(), perdedor.getCategoria(), puntosPerdedor, false, null);
-
-        final int pG = puntosGanador;
-        final int pP = puntosPerdedor;
-        final Pareja g = ganador;
-        final Pareja p = perdedor;
-        temporadaActiva.ifPresent(temporada -> {
-            restarPuntos(g.getJugador1(), g.getCategoria(), pG, true, temporada);
-            restarPuntos(g.getJugador2(), g.getCategoria(), pG, true, temporada);
-            restarPuntos(p.getJugador1(), p.getCategoria(), pP, false, temporada);
-            restarPuntos(p.getJugador2(), p.getCategoria(), pP, false, temporada);
-            recalcularPosiciones(g.getCategoria(), temporada);
-        });
-
-        recalcularPosiciones(ganador.getCategoria(), null);
+        recalcularRankingCategoria(categoria);
     }
 
     public void revertirRankingTorneo(Torneo torneo, List<Partido> partidos, List<Pareja> parejas) {
         if (!torneo.isSumaPuntosRanking())
             return;
 
-        Optional<Temporada> temporadaActiva = temporadaRepository.findFirstByActivaTrue();
+        Optional<Temporada> temporadaActivaOpt = temporadaRepository.findFirstByActivaTrue();
+        if (temporadaActivaOpt.isEmpty()) {
+            return;
+        }
+        Temporada temporada = temporadaActivaOpt.get();
         Set<Categoria> categoriasAfectadas = new HashSet<>();
 
         for (Partido partido : partidos) {
@@ -453,7 +455,7 @@ public class RankingService {
                     ? "Grupos"
                     : partido.getRonda().getNombre();
 
-            Optional<ConfiguracionPuntos> config = buscarConfigPorRonda(torneo.getId(), nombreRonda);
+            Optional<ConfiguracionPuntos> config = buscarConfigPorRonda(torneo.getId(), categoriaIdDeGanador(partido), nombreRonda);
 
             int puntosGanador = config.map(ConfiguracionPuntos::getPuntosGanador).orElse(0);
             int puntosPerdedor = config.map(ConfiguracionPuntos::getPuntosPerdedor).orElse(0);
@@ -463,22 +465,11 @@ public class RankingService {
                     ? partido.getVisitante()
                     : partido.getLocal();
 
-            restarPuntos(ganador.getJugador1(), ganador.getCategoria(), puntosGanador, true, null);
-            restarPuntos(ganador.getJugador2(), ganador.getCategoria(), puntosGanador, true, null);
-            restarPuntos(perdedor.getJugador1(), perdedor.getCategoria(), puntosPerdedor, false, null);
-            restarPuntos(perdedor.getJugador2(), perdedor.getCategoria(), puntosPerdedor, false, null);
+            restarPuntos(ganador.getJugador1(), ganador.getCategoria(), puntosGanador, true, temporada);
+            restarPuntos(ganador.getJugador2(), ganador.getCategoria(), puntosGanador, true, temporada);
+            restarPuntos(perdedor.getJugador1(), perdedor.getCategoria(), puntosPerdedor, false, temporada);
+            restarPuntos(perdedor.getJugador2(), perdedor.getCategoria(), puntosPerdedor, false, temporada);
             categoriasAfectadas.add(ganador.getCategoria());
-
-            final int pG = puntosGanador;
-            final int pP = puntosPerdedor;
-            final Pareja g = ganador;
-            final Pareja p = perdedor;
-            temporadaActiva.ifPresent(temporada -> {
-                restarPuntos(g.getJugador1(), g.getCategoria(), pG, true, temporada);
-                restarPuntos(g.getJugador2(), g.getCategoria(), pG, true, temporada);
-                restarPuntos(p.getJugador1(), p.getCategoria(), pP, false, temporada);
-                restarPuntos(p.getJugador2(), p.getCategoria(), pP, false, temporada);
-            });
         }
 
         if (torneo.getEstado() == EstadoTorneo.FINALIZADO) {
@@ -488,26 +479,18 @@ public class RankingService {
                     if (!vistos.add(jugador.getId()))
                         continue;
                     rankingEntryRepository
-                            .findByJugadorIdAndCategoriaIdAndTemporadaIsNull(jugador.getId(),
-                                    pareja.getCategoria().getId())
-                            .ifPresent(e -> {
-                                e.setTorneosJugados(Math.max(0, e.getTorneosJugados() - 1));
-                                rankingEntryRepository.save(e);
-                            });
-                    temporadaActiva.ifPresent(temporada -> rankingEntryRepository
                             .findByJugadorIdAndCategoriaIdAndTemporadaId(jugador.getId(), pareja.getCategoria().getId(),
                                     temporada.getId())
                             .ifPresent(e -> {
                                 e.setTorneosJugados(Math.max(0, e.getTorneosJugados() - 1));
                                 rankingEntryRepository.save(e);
-                            }));
+                            });
                 }
             }
         }
 
         for (Categoria categoria : categoriasAfectadas) {
-            recalcularPosiciones(categoria, null);
-            temporadaActiva.ifPresent(temporada -> recalcularPosiciones(categoria, temporada));
+            recalcularPosiciones(categoria, temporada);
         }
     }
 
@@ -522,7 +505,7 @@ public class RankingService {
                     categoria.getId(), temporada.getId());
         }
         optEntrada.ifPresent(entrada -> {
-            entrada.setPuntosTotales(Math.max(0, entrada.getPuntosTotales() - puntos));
+            entrada.setPuntosTotales(sumarConPiso(entrada.getPuntosTotales(), -puntos));
             if (esGanador)
                 entrada.setVictorias(Math.max(0, entrada.getVictorias() - 1));
             else
@@ -544,11 +527,13 @@ public class RankingService {
         for (int i = 0; i < entradas.size(); i++) {
             RankingEntry entrada = entradas.get(i);
             int nuevaPosicion = i + 1;
-            int posicionAnterior = entrada.getPosicionActual() == 0
-                    ? nuevaPosicion
-                    : entrada.getPosicionActual();
-            entrada.setPosicionAnterior(posicionAnterior);
-            entrada.setPosicionActual(nuevaPosicion);
+            if (entrada.getPosicionActual() == 0) {
+                entrada.setPosicionAnterior(nuevaPosicion);
+                entrada.setPosicionActual(nuevaPosicion);
+            } else if (entrada.getPosicionActual() != nuevaPosicion) {
+                entrada.setPosicionAnterior(entrada.getPosicionActual());
+                entrada.setPosicionActual(nuevaPosicion);
+            }
         }
 
         rankingEntryRepository.saveAll(entradas);

@@ -57,6 +57,12 @@ class ResultadoServiceTest {
     @Mock
     private RankingService rankingService;
 
+    @Mock
+    private CampeonService campeonService;
+
+    @Mock
+    private com.padel.rankpadel.repository.GrupoRepository grupoRepository;
+
     @InjectMocks
     private ResultadoService resultadoService;
 

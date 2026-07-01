@@ -12,8 +12,14 @@ public final class NormalizadorRonda {
 
         String texto = NormalizadorTexto.normalizar(nombreRonda);
 
-        if (texto.contains("grupo")) {
+        if (texto.contains("grupo") || texto.contains("fecha") || texto.contains("jornada")) {
             return "GRUPOS";
+        }
+        if (texto.contains("treintaidosavo") || texto.contains("32avo") || texto.contains("ronda de 64")) {
+            return "TREINTAIDOSAVOS";
+        }
+        if (texto.contains("dieciseisavo") || texto.contains("16avo") || texto.contains("ronda de 32")) {
+            return "DIECISEISAVOS";
         }
         if (texto.contains("octavo") || texto.contains("ronda de 16")) {
             return "OCTAVOS";
