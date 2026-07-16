@@ -85,7 +85,7 @@ public class PagoService {
 
         reservaService.crearReservasParaPago(request, pago, expiracionPagoMinutos);
 
-        String urlResultado = backUrlBase + "/reservar/pago/resultado?pagoId=" + pago.getId();
+        String urlResultado = backUrlBase + "/reservar/pago/resultado?pago=" + pago.getReferenciaExterna();
         return iniciarPreferencia(pago, "Seña reserva de cancha " + cancha.getNombre(), urlResultado);
     }
 
@@ -108,14 +108,16 @@ public class PagoService {
 
         inscripcionService.crearParaPago(request.getTorneoId(), request.getInscripcion(), pago);
 
-        String urlResultado = backUrlBase + "/torneos/" + request.getTorneoId() + "/pago/resultado?pagoId=" + pago.getId();
+        String urlResultado = backUrlBase + "/torneos/" + request.getTorneoId() + "/pago/resultado?pago=" + pago.getReferenciaExterna();
         return iniciarPreferencia(pago, "Seña inscripción " + torneo.getNombre(), urlResultado);
     }
 
+    // El identificador público de un pago es su referencia externa (UUID aleatorio):
+    // los IDs secuenciales permitirían consultar/cancelar pagos ajenos por enumeración.
     @Transactional
-    public PagoResponse obtenerPago(Long id) {
-        Pago pago = pagoRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Pago", id));
+    public PagoResponse obtenerPorReferencia(String referencia) {
+        Pago pago = pagoRepository.findByReferenciaExterna(referencia)
+                .orElseThrow(() -> new ResourceNotFoundException("Pago", referencia));
         if (pago.getEstado() == EstadoPago.PENDIENTE) {
             mercadoPagoService.buscarPagoAprobado(pago.getReferenciaExterna())
                     .ifPresent(aprobado -> confirmarPagoAprobado(pago.getReferenciaExterna(), aprobado.id()));
@@ -141,9 +143,9 @@ public class PagoService {
     }
 
     @Transactional
-    public PagoResponse cancelarPagoReserva(Long pagoId) {
-        Pago pago = pagoRepository.findById(pagoId)
-                .orElseThrow(() -> new ResourceNotFoundException("Pago", pagoId));
+    public PagoResponse cancelarPorReferencia(String referencia) {
+        Pago pago = pagoRepository.findByReferenciaExterna(referencia)
+                .orElseThrow(() -> new ResourceNotFoundException("Pago", referencia));
         liberarReservaSiPagoNoAprobado(pago);
         return aResponse(pago);
     }
@@ -227,6 +229,7 @@ public class PagoService {
             confirmarPagoAprobado(pago.getReferenciaExterna(), "DEMO");
             return PagoCreadoResponse.builder()
                     .pagoId(pago.getId())
+                    .referencia(pago.getReferenciaExterna())
                     .initPoint(urlResultado)
                     .build();
         }
@@ -237,6 +240,7 @@ public class PagoService {
         pagoRepository.save(pago);
         return PagoCreadoResponse.builder()
                 .pagoId(pago.getId())
+                .referencia(pago.getReferenciaExterna())
                 .initPoint(preferencia.initPoint())
                 .build();
     }

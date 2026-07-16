@@ -14,5 +14,6 @@ import lombok.Setter;
 public class PagoCreadoResponse {
 
     private Long pagoId;
+    private String referencia;
     private String initPoint;
 }

@@ -22,6 +22,8 @@ public interface SolicitudInscripcionRepository extends JpaRepository<SolicitudI
 
     long countByEstado(EstadoSolicitud estado);
 
+    long countByTelefonoContactoAndEstado(String telefonoContacto, EstadoSolicitud estado);
+
     @Query("SELECT COUNT(s) FROM SolicitudInscripcion s WHERE s.estado = :estado AND s.torneo.estado = :estadoTorneo")
     long contarPendientesEnTorneos(@Param("estado") EstadoSolicitud estado, @Param("estadoTorneo") EstadoTorneo estadoTorneo);
 

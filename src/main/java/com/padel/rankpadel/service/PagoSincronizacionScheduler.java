@@ -15,7 +15,8 @@ public class PagoSincronizacionScheduler {
 
     private final PagoService pagoService;
 
-    @Scheduled(fixedRate = 20000)
+    // 60s: el webhook de MP es la vía principal; este polling es solo respaldo.
+    @Scheduled(fixedRate = 60_000)
     public void sincronizarPendientes() {
         for (String referencia : pagoService.referenciasPendientesRecientes()) {
             try {

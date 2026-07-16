@@ -66,12 +66,16 @@ public class InscripcionService {
         return solicitud;
     }
 
+    private static final long MAX_SOLICITUDES_PENDIENTES_POR_TELEFONO = 3;
+
     private SolicitudInscripcion construirSolicitud(Long torneoId, SolicitudInscripcionRequest request) {
         Torneo torneo = torneoRepository.findById(torneoId)
                 .orElseThrow(() -> new ResourceNotFoundException("Torneo", torneoId));
         if (!torneo.getEstado().equals(EstadoTorneo.INSCRIPCION)) {
             throw new EstadoInvalidoException("El torneo no está en período de inscripción");
         }
+
+        validarTopePendientesPorTelefono(request.getTelefonoContacto());
 
         Categoria categoria = categoriaRepository.findById(request.getCategoriaId())
                 .orElseThrow(() -> new ResourceNotFoundException("Categoria", request.getCategoriaId()));
@@ -108,6 +112,19 @@ public class InscripcionService {
         aplicarIntegrante(solicitud, request.getJugador2(), 2);
 
         return solicitud;
+    }
+
+    private void validarTopePendientesPorTelefono(String telefonoContacto) {
+        if (telefonoContacto == null || telefonoContacto.isBlank()) {
+            return;
+        }
+        long pendientes = solicitudInscripcionRepository
+                .countByTelefonoContactoAndEstado(telefonoContacto.trim(), EstadoSolicitud.PENDIENTE);
+        if (pendientes >= MAX_SOLICITUDES_PENDIENTES_POR_TELEFONO) {
+            throw new EstadoInvalidoException(
+                    "Con ese teléfono ya hay " + MAX_SOLICITUDES_PENDIENTES_POR_TELEFONO
+                            + " inscripciones esperando aprobación. Esperá a que el club las revise.");
+        }
     }
 
     @Transactional(readOnly = true)

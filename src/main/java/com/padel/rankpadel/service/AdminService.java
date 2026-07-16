@@ -95,10 +95,17 @@ public class AdminService {
         return username == null ? "" : username.trim();
     }
 
+    private static final int MIN_PASSWORD_LENGTH = 10;
+
     private String normalizePassword(String password) {
         if (password == null || password.isBlank()) {
             return null;
         }
-        return password.trim();
+        String normalizada = password.trim();
+        if (normalizada.length() < MIN_PASSWORD_LENGTH) {
+            throw new EstadoInvalidoException(
+                    "La contraseña debe tener al menos " + MIN_PASSWORD_LENGTH + " caracteres.");
+        }
+        return normalizada;
     }
 }

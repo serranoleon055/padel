@@ -42,15 +42,15 @@ public class PagoController {
     }
 
     @SecurityRequirements({})
-    @GetMapping("/{id}")
-    public ResponseEntity<PagoResponse> obtenerPago(@PathVariable Long id) {
-        return ResponseEntity.ok(pagoService.obtenerPago(id));
+    @GetMapping("/{referencia}")
+    public ResponseEntity<PagoResponse> obtenerPago(@PathVariable String referencia) {
+        return ResponseEntity.ok(pagoService.obtenerPorReferencia(referencia));
     }
 
     @SecurityRequirements({})
-    @PostMapping("/{id}/cancelar")
-    public ResponseEntity<PagoResponse> cancelarPagoReserva(@PathVariable Long id) {
-        return ResponseEntity.ok(pagoService.cancelarPagoReserva(id));
+    @PostMapping("/{referencia}/cancelar")
+    public ResponseEntity<PagoResponse> cancelarPagoReserva(@PathVariable String referencia) {
+        return ResponseEntity.ok(pagoService.cancelarPorReferencia(referencia));
     }
 
     @SecurityRequirements({})

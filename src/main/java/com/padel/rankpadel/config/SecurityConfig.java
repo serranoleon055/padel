@@ -30,6 +30,7 @@ public class SecurityConfig {
 
     private final JwtFilter jwtFilter;
     private final LoginRateLimitFilter loginRateLimitFilter;
+    private final PublicWriteRateLimitFilter publicWriteRateLimitFilter;
 
     @Value("${app.cors.allowed-origins:http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000}")
     private String allowedOrigins;
@@ -89,7 +90,8 @@ public class SecurityConfig {
                 .exceptionHandling(ex -> ex.authenticationEntryPoint(
                         (request, response, authException) -> response.sendError(
                                 HttpStatus.UNAUTHORIZED.value(), "No autenticado")))
-                .addFilterBefore(loginRateLimitFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(publicWriteRateLimitFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(loginRateLimitFilter, PublicWriteRateLimitFilter.class)
                 .addFilterBefore(jwtFilter, LoginRateLimitFilter.class);
 
         return http.build();
