@@ -35,6 +35,7 @@ import com.padel.rankpadel.repository.PartidoRepository;
 import com.padel.rankpadel.repository.PosicionGrupoRepository;
 import com.padel.rankpadel.repository.RondaEliminatoriasRepository;
 import com.padel.rankpadel.repository.TorneoRepository;
+import com.padel.rankpadel.util.AuditoriaResultado;
 
 import lombok.RequiredArgsConstructor;
 
@@ -113,6 +114,7 @@ public class ResultadoService {
         if (partido.getFechaHora() == null) {
             partido.setFechaHora(LocalDateTime.now());
         }
+        AuditoriaResultado.marcar(partido);
         partidoRepository.save(partido);
 
         rankingService.actualizarRanking(partido);

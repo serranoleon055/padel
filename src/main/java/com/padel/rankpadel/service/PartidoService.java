@@ -21,6 +21,7 @@ import com.padel.rankpadel.repository.CanchaRepository;
 import com.padel.rankpadel.repository.ParejaRepository;
 import com.padel.rankpadel.repository.PartidoRepository;
 import com.padel.rankpadel.repository.TorneoRepository;
+import com.padel.rankpadel.util.AuditoriaResultado;
 
 import lombok.RequiredArgsConstructor;
 
@@ -173,6 +174,7 @@ public class PartidoService {
 
         partido.setGanador(ganador);
         partido.setEstado(nuevoEstado);
+        AuditoriaResultado.marcar(partido);
         partidoRepository.save(partido);
 
         if (nuevoEstado == EstadoPartido.RETIRO) {

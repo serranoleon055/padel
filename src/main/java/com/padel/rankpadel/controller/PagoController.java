@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -16,6 +17,7 @@ import com.padel.rankpadel.dto.request.LoteReservaRequest;
 import com.padel.rankpadel.dto.request.PagoInscripcionRequest;
 import com.padel.rankpadel.dto.response.PagoCreadoResponse;
 import com.padel.rankpadel.dto.response.PagoResponse;
+import com.padel.rankpadel.service.MercadoPagoWebhookValidator;
 import com.padel.rankpadel.service.PagoService;
 
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
@@ -28,6 +30,7 @@ import lombok.RequiredArgsConstructor;
 public class PagoController {
 
     private final PagoService pagoService;
+    private final MercadoPagoWebhookValidator webhookValidator;
 
     @SecurityRequirements({})
     @PostMapping("/reserva")
@@ -60,7 +63,12 @@ public class PagoController {
             @RequestParam(required = false) String topic,
             @RequestParam(name = "data.id", required = false) String dataId,
             @RequestParam(required = false) String id,
+            @RequestHeader(name = "x-signature", required = false) String xSignature,
+            @RequestHeader(name = "x-request-id", required = false) String xRequestId,
             @RequestBody(required = false) Map<String, Object> cuerpo) {
+        if (!webhookValidator.esValida(xSignature, xRequestId, dataId)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
         String tipo = type != null ? type : topic;
         if (esNotificacionDePago(tipo)) {
             pagoService.procesarNotificacion(extraerPagoMercadoPagoId(dataId, id, cuerpo));

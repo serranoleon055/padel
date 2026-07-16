@@ -448,7 +448,10 @@ public class RankingService {
         Set<Categoria> categoriasAfectadas = new HashSet<>();
 
         for (Partido partido : partidos) {
-            if (partido.getEstado() != EstadoPartido.FINALIZADO || partido.getGanador() == null)
+            // Debe espejar findPartidosQueSumanPuntos: FINALIZADO y RETIRO otorgan puntos
+            boolean sumoPuntos = partido.getEstado() == EstadoPartido.FINALIZADO
+                    || partido.getEstado() == EstadoPartido.RETIRO;
+            if (!sumoPuntos || partido.getGanador() == null)
                 continue;
 
             String nombreRonda = FasePartido.GRUPOS.equals(partido.getFase())

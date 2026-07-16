@@ -77,4 +77,8 @@ public class Partido {
     @JoinColumn(name = "ganador_id")
     private Pareja ganador;
 
+    // Auditoría: qué admin cargó/modificó el resultado y cuándo (para disputas)
+    private String resultadoCargadoPor;
+    private LocalDateTime resultadoCargadoEn;
+
 }
