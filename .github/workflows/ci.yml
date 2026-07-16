@@ -18,10 +18,10 @@ jobs:
           java-version: '21'
           cache: maven
 
-      - name: Tests unitarios de servicios (sin base de datos)
+      - name: Suite completa de tests (el @SpringBootTest está @Disabled, no requiere DB)
         run: |
           chmod +x mvnw
-          ./mvnw -B test -Dtest='*ServiceTest'
+          ./mvnw -B clean test
 
       - name: Compilar y empaquetar
         run: ./mvnw -B -DskipTests package

@@ -1,0 +1,86 @@
+name: Backup diario de MySQL
+
+# Dump diario de la base de producción a un bucket S3-compatible
+# (Backblaze B2 / Cloudflare R2), con retención de 30 días.
+#
+# Secrets requeridos (Settings → Secrets and variables → Actions):
+#   DB_HOST       host público del MySQL de Railway (ej. xxxx.proxy.rlwy.net)
+#   DB_PORT       puerto público del proxy de Railway
+#   DB_NAME       nombre de la base (ej. railway)
+#   DB_USER       usuario (ej. root)
+#   DB_PASSWORD   contraseña del MySQL
+#   S3_ENDPOINT   endpoint S3 del bucket (ej. https://s3.us-east-005.backblazeb2.com)
+#   S3_BUCKET     nombre del bucket (ej. rankpadel-backups)
+#   S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY  credenciales del bucket
+#
+# Restaurar un dump:
+#   gunzip -c rankpadel-AAAA-MM-DD.sql.gz | mysql -h <host> -P <port> -u <user> -p <db>
+
+on:
+  schedule:
+    - cron: '0 6 * * *'   # 06:00 UTC = 03:00 Argentina
+  workflow_dispatch:        # permite dispararlo a mano para probar
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verificar secrets
+        env:
+          DB_HOST: ${{ secrets.DB_HOST }}
+        run: |
+          if [ -z "$DB_HOST" ]; then
+            echo "::error::Faltan los secrets de backup (DB_HOST, etc.). Ver comentario del workflow."
+            exit 1
+          fi
+
+      - name: Instalar cliente MySQL
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq mysql-client
+
+      - name: Dump + gzip
+        env:
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        run: |
+          FECHA=$(date -u +%F)
+          mysqldump \
+            -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" -p"$DB_PASSWORD" \
+            --single-transaction --routines --triggers --no-tablespaces \
+            --set-gtid-purged=OFF "$DB_NAME" | gzip > "rankpadel-$FECHA.sql.gz"
+          ls -lh rankpadel-*.sql.gz
+          # Un dump sospechosamente chico = base vacía o error silencioso
+          [ "$(stat -c%s rankpadel-$FECHA.sql.gz)" -gt 1024 ] || { echo "::error::Dump demasiado chico"; exit 1; }
+
+      - name: Subir al bucket
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
+          S3_BUCKET: ${{ secrets.S3_BUCKET }}
+        run: |
+          FECHA=$(date -u +%F)
+          aws s3 cp "rankpadel-$FECHA.sql.gz" "s3://$S3_BUCKET/mysql/rankpadel-$FECHA.sql.gz" \
+            --endpoint-url "$S3_ENDPOINT"
+
+      - name: Borrar backups de más de 30 días
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
+          S3_BUCKET: ${{ secrets.S3_BUCKET }}
+        run: |
+          LIMITE=$(date -u -d '30 days ago' +%F)
+          aws s3 ls "s3://$S3_BUCKET/mysql/" --endpoint-url "$S3_ENDPOINT" \
+            | awk '{print $4}' | grep -E '^rankpadel-[0-9]{4}-[0-9]{2}-[0-9]{2}\.sql\.gz$' \
+            | while read -r archivo; do
+                FECHA_ARCHIVO=$(echo "$archivo" | sed -E 's/rankpadel-(.*)\.sql\.gz/\1/')
+                if [[ "$FECHA_ARCHIVO" < "$LIMITE" ]]; then
+                  echo "Borrando $archivo (anterior a $LIMITE)"
+                  aws s3 rm "s3://$S3_BUCKET/mysql/$archivo" --endpoint-url "$S3_ENDPOINT"
+                fi
+              done
