@@ -173,7 +173,11 @@ public class TorneoService {
         if (torneoRequest.getTemporadaId() != null) {
             Temporada temporada = temporadaRepository.findById(torneoRequest.getTemporadaId())
                     .orElseThrow(() -> new ResourceNotFoundException("Temporada", torneoRequest.getTemporadaId()));
-            validarTemporadaActiva(temporada);
+            boolean cambiaTemporada = torneoExistente.getTemporada() == null
+                    || !temporada.getId().equals(torneoExistente.getTemporada().getId());
+            if (cambiaTemporada) {
+                validarTemporadaActiva(temporada);
+            }
             torneoExistente.setTemporada(temporada);
         } else {
             torneoExistente.setTemporada(null);

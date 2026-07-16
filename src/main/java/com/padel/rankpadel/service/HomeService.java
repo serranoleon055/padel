@@ -122,6 +122,13 @@ public class HomeService {
                 .map(this::mapearTorneoConMetricas)
                 .toList();
 
+        long torneosFinalizados = todos.stream()
+                .filter(t -> EstadoTorneo.FINALIZADO.equals(t.getEstado()))
+                .count();
+        long torneosEnInscripcion = todos.stream()
+                .filter(t -> EstadoTorneo.INSCRIPCION.equals(t.getEstado()))
+                .count();
+
         LocalDate hoy = LocalDate.now();
         LocalTime ahora = LocalTime.now();
 
@@ -215,6 +222,8 @@ public class HomeService {
                 .reservasHoy(reservasConfirmadasHoy.size())
                 .reservasPendientes(reservasPendientes)
                 .solicitudesPendientes(solicitudesPendientes)
+                .torneosFinalizados(torneosFinalizados)
+                .torneosEnInscripcion(torneosEnInscripcion)
                 .ingresoEstimadoHoy(ingresoEstimadoHoy)
                 .turnosPorDiaSemana(turnosPorDiaSemana)
                 .proximosTurnosHoy(proximosTurnosHoy)

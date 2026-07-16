@@ -28,6 +28,8 @@ public class AdminDashboardResponse {
     private long reservasHoy;
     private long reservasPendientes;
     private long solicitudesPendientes;
+    private long torneosFinalizados;
+    private long torneosEnInscripcion;
     private BigDecimal ingresoEstimadoHoy;
     private List<Long> turnosPorDiaSemana;
     private List<TurnoResumenResponse> proximosTurnosHoy;
