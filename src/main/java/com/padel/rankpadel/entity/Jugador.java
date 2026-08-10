@@ -56,6 +56,11 @@ public class Jugador {
     private LocalDate fechaNacimiento;
     private String nombreNormalizado;
 
+    /** Ficha de cliente de esta persona, si además alquila canchas. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "cliente_id")
+    private Cliente cliente;
+
     @Enumerated(EnumType.STRING)
     private PosicionJuego posicionJuego;
 

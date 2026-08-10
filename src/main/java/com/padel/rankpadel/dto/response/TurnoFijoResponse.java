@@ -15,25 +15,24 @@ import lombok.Setter;
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-public class ReservaResponse {
+public class TurnoFijoResponse {
 
     private Long id;
     private Long canchaId;
     private String canchaNombre;
-    private LocalDate fecha;
+    private Long lugarId;
+    private String lugarNombre;
+    private int diaSemana;
     private LocalTime horaInicio;
     private LocalTime horaFin;
-    private String estado;
+    private int slots;
     private String clienteNombre;
     private String clienteTelefono;
-    private String codigo;
-    private String estadoPago;
-    private BigDecimal montoSenia;
-    private BigDecimal montoTotal;
-    /** Precio del turno congelado al reservar. */
-    private BigDecimal precioAplicado;
-    /** true si la generó un turno fijo (abono). */
-    private boolean turnoFijo;
-    /** Ficha del cliente, para saltar al historial desde el panel. */
-    private Long clienteId;
+    private BigDecimal precioPactado;
+    private LocalDate vigenteDesde;
+    private LocalDate vigenteHasta;
+    private boolean activo;
+    private String notas;
+    /** Última fecha ya generada como reserva concreta. */
+    private LocalDate generadoHasta;
 }

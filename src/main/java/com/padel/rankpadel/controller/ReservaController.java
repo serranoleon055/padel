@@ -71,4 +71,14 @@ public class ReservaController {
     public ResponseEntity<ReservaResponse> cancelar(@PathVariable Long id) {
         return ResponseEntity.ok(reservaService.cancelar(id));
     }
+
+    @PatchMapping("/{id}/no-show")
+    public ResponseEntity<ReservaResponse> marcarNoShow(@PathVariable Long id) {
+        return ResponseEntity.ok(reservaService.marcarNoShow(id));
+    }
+
+    @PatchMapping("/{id}/vino")
+    public ResponseEntity<ReservaResponse> desmarcarNoShow(@PathVariable Long id) {
+        return ResponseEntity.ok(reservaService.desmarcarNoShow(id));
+    }
 }

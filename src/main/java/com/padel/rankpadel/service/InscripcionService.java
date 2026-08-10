@@ -44,6 +44,7 @@ public class InscripcionService {
     private final JugadorRepository jugadorRepository;
     private final ParejaRepository parejaRepository;
     private final ParejaService parejaService;
+    private final NotificacionService notificacionService;
 
     @Transactional
     public SolicitudInscripcionResponse crear(Long torneoId, SolicitudInscripcionRequest request) {
@@ -55,6 +56,7 @@ public class InscripcionService {
         }
         SolicitudInscripcion solicitud = construirSolicitud(torneoId, request);
         solicitudInscripcionRepository.save(solicitud);
+        notificacionService.avisarNuevaInscripcion(solicitud);
         return aResponse(solicitud);
     }
 
@@ -63,6 +65,7 @@ public class InscripcionService {
         SolicitudInscripcion solicitud = construirSolicitud(torneoId, request);
         solicitud.setPago(pago);
         solicitudInscripcionRepository.save(solicitud);
+        notificacionService.avisarNuevaInscripcion(solicitud);
         return solicitud;
     }
 

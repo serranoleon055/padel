@@ -1,6 +1,7 @@
 package com.padel.rankpadel.service;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.ArrayList;
@@ -20,9 +21,11 @@ import com.padel.rankpadel.dto.response.EstadisticasResponse.CategoriaDemanda;
 import com.padel.rankpadel.dto.response.EstadisticasResponse.EmbudoTorneo;
 import com.padel.rankpadel.dto.response.EstadisticasResponse.IngresoMes;
 import com.padel.rankpadel.dto.response.EstadisticasResponse.OcupacionFranja;
+import com.padel.rankpadel.entity.Pago;
 import com.padel.rankpadel.entity.Reserva;
 import com.padel.rankpadel.entity.SolicitudInscripcion;
 import com.padel.rankpadel.entity.Torneo;
+import com.padel.rankpadel.enums.EstadoPago;
 import com.padel.rankpadel.enums.EstadoReserva;
 import com.padel.rankpadel.enums.EstadoSolicitud;
 import com.padel.rankpadel.enums.EstadoTorneo;
@@ -42,7 +45,11 @@ public class EstadisticaService {
     private final ParejaRepository parejaRepository;
     private final SolicitudInscripcionRepository solicitudInscripcionRepository;
 
-    private static final List<EstadoReserva> OCUPAN = List.of(EstadoReserva.CONFIRMADA, EstadoReserva.FINALIZADA);
+    // Un NO_SHOW ocupó la cancha igual (nadie más pudo usar ese horario), así que cuenta
+    // para el mapa de ocupación. Lo que NO cuenta es la facturación completa: ver
+    // ingresoReserva(), donde solo se computa la seña que quedó cobrada.
+    private static final List<EstadoReserva> OCUPAN = List.of(
+            EstadoReserva.CONFIRMADA, EstadoReserva.FINALIZADA, EstadoReserva.NO_SHOW);
     private static final List<EstadoReserva> LIBERADAS = List.of(
             EstadoReserva.CANCELADA, EstadoReserva.RECHAZADA, EstadoReserva.EXPIRADA);
     private static final List<EstadoTorneo> TORNEOS_ABIERTOS = List.of(
@@ -77,6 +84,18 @@ public class EstadisticaService {
                 .count();
         double tasaCancelacion = reservasTotales > 0 ? (double) reservasCanceladas / reservasTotales : 0d;
 
+        // El no-show se mide aparte: no es una cancelación (nadie avisó) y es la métrica
+        // que decide si conviene endurecer la política de seña.
+        long reservasNoShow = reservas.stream()
+                .filter(reserva -> reserva.getEstado() == EstadoReserva.NO_SHOW)
+                .count();
+        long turnosQueDebieronJugarse = reservas.stream()
+                .filter(reserva -> OCUPAN.contains(reserva.getEstado()))
+                .count();
+        double tasaNoShow = turnosQueDebieronJugarse > 0
+                ? (double) reservasNoShow / turnosQueDebieronJugarse
+                : 0d;
+
         List<EmbudoTorneo> embudoTorneos = calcularEmbudo(lugarId, solicitudes);
         List<CategoriaDemanda> categoriasDemandadas = calcularCategoriasDemandadas(solicitudes);
 
@@ -87,6 +106,8 @@ public class EstadisticaService {
                 .reservasTotales(reservasTotales)
                 .reservasCanceladas(reservasCanceladas)
                 .tasaCancelacion(tasaCancelacion)
+                .reservasNoShow(reservasNoShow)
+                .tasaNoShow(tasaNoShow)
                 .embudoTorneos(embudoTorneos)
                 .categoriasDemandadas(categoriasDemandadas)
                 .build();
@@ -129,9 +150,7 @@ public class EstadisticaService {
             YearMonth mes = actual.minusMonths(i);
             BigDecimal turnos = ocupadas.stream()
                     .filter(reserva -> YearMonth.from(reserva.getFecha()).equals(mes))
-                    .map(reserva -> reserva.getCancha() != null && reserva.getCancha().getPrecioPorHora() != null
-                            ? reserva.getCancha().getPrecioPorHora()
-                            : BigDecimal.ZERO)
+                    .map(this::ingresoReserva)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
             BigDecimal inscripciones = solicitudes.stream()
                     .filter(solicitud -> solicitud.getEstado() == EstadoSolicitud.APROBADA
@@ -142,6 +161,29 @@ public class EstadisticaService {
             ingresos.add(IngresoMes.builder().mes(mes.toString()).turnos(turnos).inscripciones(inscripciones).build());
         }
         return ingresos;
+    }
+
+    /**
+     * Lo que el club efectivamente facturó por un turno. Precio congelado en la reserva:
+     * el histórico no cambia si después se actualiza la tarifa de la cancha.
+     *
+     * <p>Si el cliente no vino, el club se quedó solo con la seña que ya estaba cobrada
+     * —no con el turno completo—. Sin seña online no se computa nada: contar el precio
+     * entero inflaría la facturación con plata que nunca entró.
+     */
+    private BigDecimal ingresoReserva(Reserva reserva) {
+        BigDecimal precio = reserva.getPrecioAplicado() != null
+                ? reserva.getPrecioAplicado()
+                : BigDecimal.ZERO;
+        if (reserva.getEstado() != EstadoReserva.NO_SHOW) {
+            return precio;
+        }
+        Pago pago = reserva.getPago();
+        if (pago == null || pago.getEstado() != EstadoPago.APROBADO || pago.getPorcentajeSenia() == null) {
+            return BigDecimal.ZERO;
+        }
+        return precio.multiply(BigDecimal.valueOf(pago.getPorcentajeSenia()))
+                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
     }
 
     private List<EmbudoTorneo> calcularEmbudo(Long lugarId, List<SolicitudInscripcion> solicitudes) {

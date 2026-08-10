@@ -22,6 +22,9 @@ public class EstadisticasResponse {
     private long reservasTotales;
     private long reservasCanceladas;
     private double tasaCancelacion;
+    private long reservasNoShow;
+    /** Ausentes sobre los turnos que debieron jugarse (no sobre el total de solicitudes). */
+    private double tasaNoShow;
     private List<EmbudoTorneo> embudoTorneos;
     private List<CategoriaDemanda> categoriasDemandadas;
 

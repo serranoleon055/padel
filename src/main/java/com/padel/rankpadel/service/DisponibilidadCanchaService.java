@@ -1,5 +1,7 @@
 package com.padel.rankpadel.service;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -12,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.padel.rankpadel.dto.response.SlotDisponibilidad;
 import com.padel.rankpadel.entity.BloqueoCancha;
+import com.padel.rankpadel.entity.Cancha;
 import com.padel.rankpadel.entity.HorarioCancha;
 import com.padel.rankpadel.entity.Partido;
 import com.padel.rankpadel.entity.Reserva;
@@ -31,6 +34,7 @@ public class DisponibilidadCanchaService {
     private static final int DURACION_PARTIDO_MIN = 90;
     private static final int DURACION_SLOT_DEFECTO = 60;
     private static final int MAXIMO_SLOTS = 200;
+    private static final int DIAS_BUSQUEDA_APERTURA = 8;
     private static final Set<EstadoReserva> ESTADOS_ACTIVOS =
             Set.of(EstadoReserva.PENDIENTE, EstadoReserva.CONFIRMADA);
 
@@ -103,6 +107,46 @@ public class DisponibilidadCanchaService {
             return DURACION_SLOT_DEFECTO;
         }
         return horario.getDuracionSlotMin();
+    }
+
+    /** Precio de un slot: la tarifa por hora prorrateada por la duración real del turno. */
+    public BigDecimal precioSlot(Cancha cancha) {
+        if (cancha == null || cancha.getPrecioPorHora() == null) {
+            return null;
+        }
+        return cancha.getPrecioPorHora()
+                .multiply(BigDecimal.valueOf(duracionSlot(cancha.getId())))
+                .divide(BigDecimal.valueOf(60), 2, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * Primer momento, a partir de {@code desde}, en que el club está abierto para esta cancha.
+     * Si {@code desde} ya cae dentro del horario de atención, devuelve {@code desde}.
+     * Se usa para no expirar solicitudes mientras el club está cerrado y no puede verlas.
+     */
+    public LocalDateTime proximaApertura(Long canchaId, LocalDateTime desde) {
+        HorarioCancha horario = horarioActivo(canchaId);
+        if (horario == null || horario.getHoraApertura() == null || horario.getHoraCierre() == null) {
+            return desde;
+        }
+        for (int i = 0; i <= DIAS_BUSQUEDA_APERTURA; i++) {
+            LocalDate dia = desde.toLocalDate().plusDays(i);
+            if (!diaActivo(horario.getDiasActivos(), dia)) {
+                continue;
+            }
+            LocalDateTime apertura = dia.atTime(horario.getHoraApertura());
+            LocalDateTime cierre = dia.atTime(horario.getHoraCierre());
+            if (!cierre.isAfter(apertura)) {
+                cierre = cierre.plusDays(1);
+            }
+            if (desde.isBefore(apertura)) {
+                return apertura;
+            }
+            if (desde.isBefore(cierre)) {
+                return desde;
+            }
+        }
+        return desde;
     }
 
     private LocalTime aperturaActiva(Long canchaId) {

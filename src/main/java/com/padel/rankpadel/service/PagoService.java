@@ -3,9 +3,13 @@ package com.padel.rankpadel.service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,6 +40,8 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class PagoService {
 
+    private static final Logger log = LoggerFactory.getLogger(PagoService.class);
+
     private final PagoRepository pagoRepository;
     private final CanchaRepository canchaRepository;
     private final TorneoRepository torneoRepository;
@@ -45,6 +51,7 @@ public class PagoService {
     private final InscripcionService inscripcionService;
     private final DisponibilidadCanchaService disponibilidadCanchaService;
     private final MercadoPagoService mercadoPagoService;
+    private final NotificacionService notificacionService;
 
     @Value("${app.pagos.porcentaje-senia-default:50}")
     private int porcentajeSeniaDefault;
@@ -83,10 +90,16 @@ public class PagoService {
         Pago pago = crearPagoPendiente(ConceptoPago.RESERVA, montoTotal, montoSenia, porcentaje,
                 request.getClienteNombre(), request.getClienteTelefono());
 
-        reservaService.crearReservasParaPago(request, pago, expiracionPagoMinutos);
+        List<Reserva> reservas = reservaService.crearReservasParaPago(request, pago, expiracionPagoMinutos);
+        // La preferencia tiene que caducar con el turno más próximo a vencer, no después.
+        LocalDateTime expiraEn = reservas.stream()
+                .map(Reserva::getExpiraEn)
+                .filter(Objects::nonNull)
+                .min(LocalDateTime::compareTo)
+                .orElse(LocalDateTime.now().plusMinutes(expiracionPagoMinutos));
 
         String urlResultado = backUrlBase + "/reservar/pago/resultado?pago=" + pago.getReferenciaExterna();
-        return iniciarPreferencia(pago, "Seña reserva de cancha " + cancha.getNombre(), urlResultado);
+        return iniciarPreferencia(pago, "Seña reserva de cancha " + cancha.getNombre(), urlResultado, expiraEn);
     }
 
     @Transactional
@@ -109,7 +122,8 @@ public class PagoService {
         inscripcionService.crearParaPago(request.getTorneoId(), request.getInscripcion(), pago);
 
         String urlResultado = backUrlBase + "/torneos/" + request.getTorneoId() + "/pago/resultado?pago=" + pago.getReferenciaExterna();
-        return iniciarPreferencia(pago, "Seña inscripción " + torneo.getNombre(), urlResultado);
+        return iniciarPreferencia(pago, "Seña inscripción " + torneo.getNombre(), urlResultado,
+                LocalDateTime.now().plusMinutes(expiracionPagoMinutos));
     }
 
     // El identificador público de un pago es su referencia externa (UUID aleatorio):
@@ -156,7 +170,9 @@ public class PagoService {
     }
 
     private void liberarReservaSiPagoNoAprobado(Pago pago) {
-        if (pago.getConcepto() != ConceptoPago.RESERVA || pago.getEstado() == EstadoPago.APROBADO) {
+        if (pago.getConcepto() != ConceptoPago.RESERVA
+                || pago.getEstado() == EstadoPago.APROBADO
+                || pago.getEstado() == EstadoPago.APROBADO_SIN_TURNO) {
             return;
         }
         boolean liberada = reservaService.liberarPorPagoFallido(reservaRepository.findByPagoId(pago.getId()));
@@ -183,7 +199,8 @@ public class PagoService {
     @Transactional
     public void confirmarPagoAprobado(String referenciaExterna, String pagoMercadoPagoId) {
         Pago pago = pagoRepository.findByReferenciaExterna(referenciaExterna).orElse(null);
-        if (pago == null || pago.getEstado() == EstadoPago.APROBADO) {
+        if (pago == null || pago.getEstado() == EstadoPago.APROBADO
+                || pago.getEstado() == EstadoPago.APROBADO_SIN_TURNO) {
             return;
         }
         pago.setEstado(EstadoPago.APROBADO);
@@ -192,12 +209,29 @@ public class PagoService {
         pagoRepository.save(pago);
 
         if (pago.getConcepto() == ConceptoPago.RESERVA) {
-            for (Reserva reserva : reservaRepository.findByPagoId(pago.getId())) {
+            List<Reserva> reservas = reservaRepository.findByPagoId(pago.getId());
+            List<Reserva> perdidas = new ArrayList<>();
+            for (Reserva reserva : reservas) {
                 if (reserva.getEstado() == EstadoReserva.PENDIENTE) {
                     reserva.setEstado(EstadoReserva.CONFIRMADA);
                     reserva.setConfirmadoEn(LocalDateTime.now());
                     reservaRepository.save(reserva);
+                } else if (reserva.getEstado() != EstadoReserva.CONFIRMADA
+                        && reserva.getEstado() != EstadoReserva.FINALIZADA) {
+                    perdidas.add(reserva);
                 }
+            }
+            // El pago entró tarde: el turno ya venció o lo tomó otro. Antes esto se salteaba
+            // en silencio y el club se quedaba con plata de una cancha que nunca entregó.
+            if (!perdidas.isEmpty()) {
+                pago.setEstado(EstadoPago.APROBADO_SIN_TURNO);
+                pagoRepository.save(pago);
+                log.error("[PAGO SIN TURNO] Pago {} (MP {}) aprobado por {} pero {} de {} turnos ya no estaban "
+                        + "disponibles. Cliente: {} / {}. HAY QUE DEVOLVER LA SEÑA.",
+                        referenciaExterna, pagoMercadoPagoId, pago.getMontoSenia(),
+                        perdidas.size(), reservas.size(),
+                        pago.getClienteNombre(), pago.getClienteTelefono());
+                notificacionService.avisarPagoSinTurno(pago, perdidas);
             }
         } else {
             SolicitudInscripcion solicitud = solicitudInscripcionRepository.findByPagoId(pago.getId());
@@ -224,7 +258,8 @@ public class PagoService {
         return pagoRepository.save(pago);
     }
 
-    private PagoCreadoResponse iniciarPreferencia(Pago pago, String titulo, String urlResultado) {
+    private PagoCreadoResponse iniciarPreferencia(Pago pago, String titulo, String urlResultado,
+            LocalDateTime expiraEn) {
         if (modoDemo) {
             confirmarPagoAprobado(pago.getReferenciaExterna(), "DEMO");
             return PagoCreadoResponse.builder()
@@ -235,7 +270,7 @@ public class PagoService {
         }
         MercadoPagoService.PreferenciaCreada preferencia = mercadoPagoService.crearPreferencia(
                 pago.getReferenciaExterna(), titulo, pago.getMontoSenia(),
-                urlResultado, urlResultado, urlResultado, notificationUrl);
+                urlResultado, urlResultado, urlResultado, notificationUrl, expiraEn);
         pago.setPreferenciaId(preferencia.id());
         pagoRepository.save(pago);
         return PagoCreadoResponse.builder()

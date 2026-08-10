@@ -8,6 +8,9 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 
@@ -20,6 +23,8 @@ import com.mercadopago.MercadoPagoConfig;
 import com.mercadopago.client.preference.PreferenceBackUrlsRequest;
 import com.mercadopago.client.preference.PreferenceClient;
 import com.mercadopago.client.preference.PreferenceItemRequest;
+import com.mercadopago.client.preference.PreferencePaymentMethodsRequest;
+import com.mercadopago.client.preference.PreferencePaymentTypeRequest;
 import com.mercadopago.client.preference.PreferenceRequest;
 import com.mercadopago.exceptions.MPApiException;
 import com.mercadopago.exceptions.MPException;
@@ -59,7 +64,8 @@ public class MercadoPagoService {
     }
 
     public PreferenciaCreada crearPreferencia(String referenciaExterna, String titulo, BigDecimal monto,
-            String urlExito, String urlPendiente, String urlError, String notificationUrl) {
+            String urlExito, String urlPendiente, String urlError, String notificationUrl,
+            LocalDateTime expiraEn) {
         aplicarToken();
         PreferenceItemRequest item = PreferenceItemRequest.builder()
                 .title(titulo)
@@ -75,7 +81,21 @@ public class MercadoPagoService {
         PreferenceRequest.PreferenceRequestBuilder solicitud = PreferenceRequest.builder()
                 .items(List.of(item))
                 .externalReference(referenciaExterna)
-                .backUrls(backUrls);
+                .backUrls(backUrls)
+                // Los medios offline (Rapipago/Pago Fácil, cajero) se pagan hasta 3 días
+                // después: para entonces el turno ya venció y estaría cobrado sin cancha.
+                .paymentMethods(PreferencePaymentMethodsRequest.builder()
+                        .excludedPaymentTypes(List.of(
+                                PreferencePaymentTypeRequest.builder().id("ticket").build(),
+                                PreferencePaymentTypeRequest.builder().id("atm").build()))
+                        .build());
+        // La preferencia caduca junto con la reserva: sin esto se puede pagar días más tarde.
+        if (expiraEn != null) {
+            OffsetDateTime vencimiento = expiraEn.atZone(ZoneId.systemDefault()).toOffsetDateTime();
+            solicitud.expires(true)
+                    .expirationDateFrom(OffsetDateTime.now())
+                    .expirationDateTo(vencimiento);
+        }
         if (urlExito != null && urlExito.startsWith("https")) {
             solicitud.autoReturn("approved");
         }

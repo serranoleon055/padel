@@ -1,5 +1,6 @@
 package com.padel.rankpadel.entity;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -43,6 +44,10 @@ public class Reserva {
     private LocalTime horaInicio;
     private LocalTime horaFin;
 
+    // Precio del turno congelado al reservar: la facturación histórica no debe
+    // cambiar cuando el club actualiza la tarifa de la cancha.
+    private BigDecimal precioAplicado;
+
     @Enumerated(EnumType.STRING)
     private EstadoReserva estado;
 
@@ -57,4 +62,18 @@ public class Reserva {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "pago_id")
     private Pago pago;
+
+    /** Turno fijo que la generó, si viene de un abono. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "turno_fijo_id")
+    private TurnoFijo turnoFijo;
+
+    /**
+     * Ficha del cliente. Los campos {@code clienteNombre} y {@code clienteTelefono} se
+     * mantienen como estaban: son lo que la persona escribió en ese momento y no deben
+     * cambiar si después se corrige la ficha.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "cliente_id")
+    private Cliente cliente;
 }

@@ -19,6 +19,8 @@ public class AdminRequest {
     @Size(max = 80)
     private String username;
 
-    @Size(min = 6, max = 120)
+    // Mínimo alineado (y por encima) del que exige AdminBootstrap en producción:
+    // la clave del panel es la llave de todos los datos del club.
+    @Size(min = 10, max = 120)
     private String password;
 }

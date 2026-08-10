@@ -179,7 +179,7 @@ public class HomeService {
         long solicitudesPendientes = solicitudesPendientesLista.size();
 
         BigDecimal ingresoEstimadoHoy = reservasConfirmadasHoy.stream()
-                .map(reserva -> reserva.getCancha() != null ? reserva.getCancha().getPrecioPorHora() : null)
+                .map(Reserva::getPrecioAplicado)
                 .filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
