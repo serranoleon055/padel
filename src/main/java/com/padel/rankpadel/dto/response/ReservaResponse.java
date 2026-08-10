@@ -36,4 +36,10 @@ public class ReservaResponse {
     private boolean turnoFijo;
     /** Ficha del cliente, para saltar al historial desde el panel. */
     private Long clienteId;
+    /** Seña online ya acreditada para este horario. */
+    private BigDecimal seniaPagada;
+    /** Cobrado en el mostrador. */
+    private BigDecimal totalCobrado;
+    /** Lo que todavía falta cobrar. */
+    private BigDecimal saldoPendiente;
 }

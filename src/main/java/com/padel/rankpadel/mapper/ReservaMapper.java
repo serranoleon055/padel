@@ -1,10 +1,13 @@
 package com.padel.rankpadel.mapper;
 
+import java.math.BigDecimal;
+
 import org.springframework.stereotype.Component;
 
 import com.padel.rankpadel.dto.response.ReservaResponse;
 import com.padel.rankpadel.entity.Pago;
 import com.padel.rankpadel.entity.Reserva;
+import com.padel.rankpadel.util.MontosReserva;
 
 /**
  * Está aparte de {@code ReservaService} porque {@code ClienteService} también arma
@@ -15,6 +18,14 @@ import com.padel.rankpadel.entity.Reserva;
 public class ReservaMapper {
 
     public ReservaResponse aResponse(Reserva reserva) {
+        return aResponse(reserva, null);
+    }
+
+    /**
+     * @param cobradoEnClub total ya cobrado en el mostrador. Se pasa desde afuera porque
+     *                      los listados lo resuelven en una sola consulta agrupada.
+     */
+    public ReservaResponse aResponse(Reserva reserva, BigDecimal cobradoEnClub) {
         Pago pago = reserva.getPago();
         return ReservaResponse.builder()
                 .id(reserva.getId())
@@ -33,6 +44,9 @@ public class ReservaMapper {
                 .precioAplicado(reserva.getPrecioAplicado())
                 .turnoFijo(reserva.getTurnoFijo() != null)
                 .clienteId(reserva.getCliente() != null ? reserva.getCliente().getId() : null)
+                .seniaPagada(MontosReserva.seniaPagada(reserva))
+                .totalCobrado(cobradoEnClub != null ? cobradoEnClub : BigDecimal.ZERO)
+                .saldoPendiente(MontosReserva.saldo(reserva, cobradoEnClub))
                 .build();
     }
 }

@@ -1,7 +1,6 @@
 package com.padel.rankpadel.service;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.ArrayList;
@@ -21,11 +20,9 @@ import com.padel.rankpadel.dto.response.EstadisticasResponse.CategoriaDemanda;
 import com.padel.rankpadel.dto.response.EstadisticasResponse.EmbudoTorneo;
 import com.padel.rankpadel.dto.response.EstadisticasResponse.IngresoMes;
 import com.padel.rankpadel.dto.response.EstadisticasResponse.OcupacionFranja;
-import com.padel.rankpadel.entity.Pago;
 import com.padel.rankpadel.entity.Reserva;
 import com.padel.rankpadel.entity.SolicitudInscripcion;
 import com.padel.rankpadel.entity.Torneo;
-import com.padel.rankpadel.enums.EstadoPago;
 import com.padel.rankpadel.enums.EstadoReserva;
 import com.padel.rankpadel.enums.EstadoSolicitud;
 import com.padel.rankpadel.enums.EstadoTorneo;
@@ -33,6 +30,7 @@ import com.padel.rankpadel.repository.ParejaRepository;
 import com.padel.rankpadel.repository.ReservaRepository;
 import com.padel.rankpadel.repository.SolicitudInscripcionRepository;
 import com.padel.rankpadel.repository.TorneoRepository;
+import com.padel.rankpadel.util.MontosReserva;
 
 import lombok.RequiredArgsConstructor;
 
@@ -172,18 +170,10 @@ public class EstadisticaService {
      * entero inflaría la facturación con plata que nunca entró.
      */
     private BigDecimal ingresoReserva(Reserva reserva) {
-        BigDecimal precio = reserva.getPrecioAplicado() != null
-                ? reserva.getPrecioAplicado()
-                : BigDecimal.ZERO;
         if (reserva.getEstado() != EstadoReserva.NO_SHOW) {
-            return precio;
+            return MontosReserva.precio(reserva);
         }
-        Pago pago = reserva.getPago();
-        if (pago == null || pago.getEstado() != EstadoPago.APROBADO || pago.getPorcentajeSenia() == null) {
-            return BigDecimal.ZERO;
-        }
-        return precio.multiply(BigDecimal.valueOf(pago.getPorcentajeSenia()))
-                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+        return MontosReserva.seniaPagada(reserva);
     }
 
     private List<EmbudoTorneo> calcularEmbudo(Long lugarId, List<SolicitudInscripcion> solicitudes) {

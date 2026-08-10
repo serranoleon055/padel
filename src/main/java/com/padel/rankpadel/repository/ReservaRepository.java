@@ -17,7 +17,11 @@ import com.padel.rankpadel.enums.EstadoReserva;
 
 public interface ReservaRepository extends JpaRepository<Reserva, Long> {
 
-    List<Reserva> findByCanchaIdAndFecha(Long canchaId, LocalDate fecha);
+    // El pago viene en el mismo viaje: el listado del día muestra estado de seña y saldo
+    // de cada turno, y sin el fetch eso era una consulta por fila.
+    @Query("SELECT r FROM Reserva r LEFT JOIN FETCH r.pago LEFT JOIN FETCH r.cancha "
+            + "WHERE r.cancha.id = :canchaId AND r.fecha = :fecha")
+    List<Reserva> findByCanchaIdAndFecha(@Param("canchaId") Long canchaId, @Param("fecha") LocalDate fecha);
 
     List<Reserva> findByEstadoAndExpiraEnBefore(EstadoReserva estado, LocalDateTime momento);
 

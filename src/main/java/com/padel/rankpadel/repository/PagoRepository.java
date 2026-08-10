@@ -16,4 +16,6 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
     List<Pago> findByEstadoAndCreadoEnAfter(EstadoPago estado, LocalDateTime desde);
 
     List<Pago> findByEstadoAndPagadoEnAfter(EstadoPago estado, LocalDateTime desde);
+
+    List<Pago> findByEstadoAndPagadoEnBetween(EstadoPago estado, LocalDateTime desde, LocalDateTime hasta);
 }

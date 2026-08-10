@@ -5,7 +5,9 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -26,6 +28,7 @@ import com.padel.rankpadel.exception.EstadoInvalidoException;
 import com.padel.rankpadel.exception.ResourceNotFoundException;
 import com.padel.rankpadel.mapper.ReservaMapper;
 import com.padel.rankpadel.repository.CanchaRepository;
+import com.padel.rankpadel.repository.CobroRepository;
 import com.padel.rankpadel.repository.ReservaRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -43,6 +46,7 @@ public class ReservaService {
     private final NotificacionService notificacionService;
     private final ClienteService clienteService;
     private final ReservaMapper reservaMapper;
+    private final CobroRepository cobroRepository;
 
     @Transactional
     public ReservaResponse solicitar(SolicitudReservaRequest request) {
@@ -338,8 +342,18 @@ public class ReservaService {
 
     @Transactional(readOnly = true)
     public List<ReservaResponse> listarPorFecha(Long canchaId, LocalDate fecha) {
-        return reservaRepository.findByCanchaIdAndFecha(canchaId, fecha).stream()
-                .map(this::aResponse)
+        List<Reserva> reservas = reservaRepository.findByCanchaIdAndFecha(canchaId, fecha);
+        if (reservas.isEmpty()) {
+            return List.of();
+        }
+        // Lo cobrado de todos los turnos del día en una sola consulta agrupada.
+        Map<Long, BigDecimal> cobrado = new HashMap<>();
+        for (CobroRepository.TotalPorReserva total : cobroRepository.totalesPorReserva(
+                reservas.stream().map(Reserva::getId).toList())) {
+            cobrado.put(total.getReservaId(), total.getTotal());
+        }
+        return reservas.stream()
+                .map(reserva -> reservaMapper.aResponse(reserva, cobrado.get(reserva.getId())))
                 .toList();
     }
 
