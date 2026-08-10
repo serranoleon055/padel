@@ -3,6 +3,7 @@ package com.padel.rankpadel.service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -72,17 +73,18 @@ public class PagoService {
     public PagoCreadoResponse crearPagoReserva(LoteReservaRequest request) {
         Cancha cancha = canchaRepository.findById(request.getCanchaId())
                 .orElseThrow(() -> new ResourceNotFoundException("Cancha", request.getCanchaId()));
-        if (cancha.getPrecioPorHora() == null) {
-            throw new EstadoInvalidoException("Esta cancha no tiene precio configurado para pago online");
-        }
 
-        long cantidadSlots = request.getHorarios().stream().distinct().count();
-        BigDecimal horasPorSlot = BigDecimal.valueOf(disponibilidadCanchaService.duracionSlot(cancha.getId()))
-                .divide(BigDecimal.valueOf(60), 4, RoundingMode.HALF_UP);
-        BigDecimal montoTotal = cancha.getPrecioPorHora()
-                .multiply(horasPorSlot)
-                .multiply(BigDecimal.valueOf(cantidadSlots))
-                .setScale(2, RoundingMode.HALF_UP);
+        // Cada horario se cotiza por separado: un turno de 20 a 22 puede cruzar dos
+        // franjas con tarifas distintas.
+        BigDecimal montoTotal = BigDecimal.ZERO;
+        for (LocalTime horaInicio : request.getHorarios().stream().distinct().toList()) {
+            BigDecimal precio = disponibilidadCanchaService.precioSlot(cancha, request.getFecha(), horaInicio);
+            if (precio == null) {
+                throw new EstadoInvalidoException("Esta cancha no tiene precio configurado para pago online");
+            }
+            montoTotal = montoTotal.add(precio);
+        }
+        montoTotal = montoTotal.setScale(2, RoundingMode.HALF_UP);
 
         int porcentaje = resolverPorcentajeSenia(cancha.getSeniaPorcentaje());
         BigDecimal montoSenia = calcularSenia(montoTotal, porcentaje);

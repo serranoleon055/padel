@@ -68,7 +68,8 @@ class ReservaServiceTest {
                         .atTime((LocalTime) invocacion.getArgument(2)));
         lenient().when(disponibilidadCanchaService.proximaApertura(eq(1L), any(LocalDateTime.class)))
                 .thenAnswer(invocacion -> invocacion.getArgument(1));
-        lenient().when(disponibilidadCanchaService.precioSlot(any(Cancha.class)))
+        lenient().when(disponibilidadCanchaService.precioSlot(
+                any(Cancha.class), any(LocalDate.class), any(LocalTime.class)))
                 .thenReturn(new BigDecimal("20000.00"));
     }
 

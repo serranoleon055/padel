@@ -73,6 +73,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/plantillas-puntos/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/ranking/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/canchas/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/tarifas-cancha").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/configuracion-sede").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/reservas/disponibilidad").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/reservas").permitAll()

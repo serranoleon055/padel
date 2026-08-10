@@ -38,6 +38,7 @@ public class DisponibilidadCanchaService {
     private static final Set<EstadoReserva> ESTADOS_ACTIVOS =
             Set.of(EstadoReserva.PENDIENTE, EstadoReserva.CONFIRMADA);
 
+    private final TarifaCanchaService tarifaCanchaService;
     private final HorarioCanchaRepository horarioCanchaRepository;
     private final ReservaRepository reservaRepository;
     private final BloqueoCanchaRepository bloqueoCanchaRepository;
@@ -109,12 +110,23 @@ public class DisponibilidadCanchaService {
         return horario.getDuracionSlotMin();
     }
 
-    /** Precio de un slot: la tarifa por hora prorrateada por la duración real del turno. */
-    public BigDecimal precioSlot(Cancha cancha) {
-        if (cancha == null || cancha.getPrecioPorHora() == null) {
+    /**
+     * Precio de un slot: la tarifa vigente para ese día y hora, prorrateada por la
+     * duración real del turno. Si ninguna franja cubre el horario, manda la tarifa por
+     * defecto de la cancha.
+     */
+    public BigDecimal precioSlot(Cancha cancha, LocalDate fecha, LocalTime horaInicio) {
+        if (cancha == null) {
             return null;
         }
-        return cancha.getPrecioPorHora()
+        BigDecimal porHora = tarifaCanchaService.precioPorHora(cancha.getId(), fecha, horaInicio);
+        if (porHora == null) {
+            porHora = cancha.getPrecioPorHora();
+        }
+        if (porHora == null) {
+            return null;
+        }
+        return porHora
                 .multiply(BigDecimal.valueOf(duracionSlot(cancha.getId())))
                 .divide(BigDecimal.valueOf(60), 2, RoundingMode.HALF_UP);
     }
