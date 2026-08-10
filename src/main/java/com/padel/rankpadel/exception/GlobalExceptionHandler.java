@@ -7,9 +7,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 @ControllerAdvice
 public class GlobalExceptionHandler {
@@ -56,6 +60,49 @@ public class GlobalExceptionHandler {
                 .status(400)
                 .error("Bad Request")
                 .mensaje(ex.getMessage())
+                .timestamp(LocalDateTime.now())
+                .build();
+        return ResponseEntity.badRequest().body(apiError);
+    }
+
+    /**
+     * Body ilegible: JSON roto, un enum inexistente, una fecha mal escrita o texto que
+     * no es UTF-8. Es culpa del cliente; devolverlo como 500 tapaba los errores reales
+     * del servidor en el monitoreo.
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiError> handleBodyIlegible(HttpMessageNotReadableException ex) {
+        log.warn("Body inválido: {}", ex.getMessage());
+        return badRequest("El cuerpo de la petición no es válido. Revisá el formato de los datos enviados.");
+    }
+
+    /** Parámetro con el tipo equivocado (?fecha=ayer en vez de una fecha). */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiError> handleTipoInvalido(MethodArgumentTypeMismatchException ex) {
+        return badRequest("El parámetro '" + ex.getName() + "' tiene un valor inválido.");
+    }
+
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ApiError> handleParametroFaltante(MissingServletRequestParameterException ex) {
+        return badRequest("Falta el parámetro '" + ex.getParameterName() + "'.");
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiError> handleMetodoNoSoportado(HttpRequestMethodNotSupportedException ex) {
+        ApiError apiError = ApiError.builder()
+                .status(405)
+                .error("Method Not Allowed")
+                .mensaje("El método " + ex.getMethod() + " no está permitido en esta dirección.")
+                .timestamp(LocalDateTime.now())
+                .build();
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).body(apiError);
+    }
+
+    private ResponseEntity<ApiError> badRequest(String mensaje) {
+        ApiError apiError = ApiError.builder()
+                .status(400)
+                .error("Bad Request")
+                .mensaje(mensaje)
                 .timestamp(LocalDateTime.now())
                 .build();
         return ResponseEntity.badRequest().body(apiError);
