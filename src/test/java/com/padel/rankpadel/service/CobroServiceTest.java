@@ -30,7 +30,7 @@ import com.padel.rankpadel.entity.Pago;
 import com.padel.rankpadel.entity.Reserva;
 import com.padel.rankpadel.enums.EstadoPago;
 import com.padel.rankpadel.enums.EstadoReserva;
-import com.padel.rankpadel.enums.MedioCobro;
+import com.padel.rankpadel.enums.MedioPago;
 import com.padel.rankpadel.exception.EstadoInvalidoException;
 import com.padel.rankpadel.repository.CobroRepository;
 import com.padel.rankpadel.repository.ReservaRepository;
@@ -69,7 +69,7 @@ class CobroServiceTest {
     private CobroRequest cobroDe(String monto) {
         CobroRequest request = new CobroRequest();
         request.setMonto(new BigDecimal(monto));
-        request.setMedio(MedioCobro.EFECTIVO);
+        request.setMedio(MedioPago.EFECTIVO);
         return request;
     }
 
@@ -84,7 +84,7 @@ class CobroServiceTest {
         ArgumentCaptor<Cobro> guardado = ArgumentCaptor.forClass(Cobro.class);
         verify(cobroRepository).save(guardado.capture());
         assertThat(guardado.getValue().getMonto()).isEqualByComparingTo("10000.00");
-        assertThat(guardado.getValue().getMedio()).isEqualTo(MedioCobro.EFECTIVO);
+        assertThat(guardado.getValue().getMedio()).isEqualTo(MedioPago.EFECTIVO);
     }
 
     @Test

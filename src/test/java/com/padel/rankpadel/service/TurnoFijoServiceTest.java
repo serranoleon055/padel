@@ -65,6 +65,13 @@ class TurnoFijoServiceTest {
         lenient().when(disponibilidadCanchaService.duracionSlot(1L)).thenReturn(60);
     }
 
+    /** Cuántos martes hay entre hoy y {@code hasta}, ambos inclusive. */
+    private long martesHasta(LocalDate hasta) {
+        return LocalDate.now().datesUntil(hasta.plusDays(1))
+                .filter(fecha -> fecha.getDayOfWeek() == DayOfWeek.TUESDAY)
+                .count();
+    }
+
     /** Turno fijo los martes 20:00, vigente desde hoy, sin fecha de corte. */
     private TurnoFijo turnoMartes(int slots, BigDecimal precioPactado) {
         return TurnoFijo.builder()
@@ -91,8 +98,7 @@ class TurnoFijoServiceTest {
 
         GeneracionTurnosFijosResponse resultado = turnoFijoService.generarTodos();
 
-        // 4 semanas de ventana: 4 o 5 martes según en qué día de la semana caiga hoy.
-        assertThat(resultado.getGeneradas()).isBetween(4, 5);
+        assertThat(resultado.getGeneradas()).isEqualTo((int) martesHasta(LocalDate.now().plusWeeks(4)));
         assertThat(resultado.getConflictos()).isEmpty();
 
         ArgumentCaptor<LocalDate> fechas = ArgumentCaptor.forClass(LocalDate.class);
@@ -143,12 +149,17 @@ class TurnoFijoServiceTest {
         when(reservaService.crearParaTurnoFijo(any(), any(), any(), any()))
                 .thenReturn(Optional.of(new Reserva()));
 
-        turnoFijoService.generarTodos();
+        GeneracionTurnosFijosResponse resultado = turnoFijoService.generarTodos();
 
         ArgumentCaptor<LocalTime> horas = ArgumentCaptor.forClass(LocalTime.class);
         ArgumentCaptor<BigDecimal> precios = ArgumentCaptor.forClass(BigDecimal.class);
-        verify(reservaService, times(8)).crearParaTurnoFijo(any(), any(), horas.capture(), precios.capture());
+        // La cantidad de martes en la ventana depende de en qué día caiga hoy: se cuenta
+        // en vez de fijarla, para que el test no se rompa según el día que se corra.
+        int martesEnLaVentana = (int) martesHasta(LocalDate.now().plusWeeks(4));
+        verify(reservaService, times(martesEnLaVentana * 2))
+                .crearParaTurnoFijo(any(), any(), horas.capture(), precios.capture());
 
+        assertThat(resultado.getGeneradas()).isEqualTo(martesEnLaVentana * 2);
         assertThat(horas.getAllValues()).containsOnly(LocalTime.of(20, 0), LocalTime.of(21, 0));
         // El precio pactado es del turno completo: se guarda prorrateado por horario.
         assertThat(precios.getAllValues()).allMatch(p -> p.compareTo(new BigDecimal("25000.00")) == 0);

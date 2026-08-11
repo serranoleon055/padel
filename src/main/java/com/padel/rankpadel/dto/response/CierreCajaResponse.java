@@ -39,6 +39,14 @@ public class CierreCajaResponse {
 
     private List<CobroResponse> movimientos;
 
+    /** Egresos del día (todos los medios). */
+    private BigDecimal egresos;
+    /** Parte de los egresos que salió del cajón. */
+    private BigDecimal egresosEfectivo;
+    /** Ingresos menos egresos: lo que de verdad quedó. */
+    private BigDecimal resultado;
+    private List<GastoResponse> gastos;
+
     @Getter
     @Setter
     @AllArgsConstructor

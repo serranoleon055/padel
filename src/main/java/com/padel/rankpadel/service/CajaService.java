@@ -19,8 +19,9 @@ import com.padel.rankpadel.entity.Pago;
 import com.padel.rankpadel.entity.Reserva;
 import com.padel.rankpadel.enums.EstadoPago;
 import com.padel.rankpadel.enums.EstadoReserva;
-import com.padel.rankpadel.enums.MedioCobro;
+import com.padel.rankpadel.enums.MedioPago;
 import com.padel.rankpadel.repository.CobroRepository;
+import com.padel.rankpadel.repository.GastoRepository;
 import com.padel.rankpadel.repository.CobroRepository.TotalPorReserva;
 import com.padel.rankpadel.repository.PagoRepository;
 import com.padel.rankpadel.repository.ReservaRepository;
@@ -42,7 +43,9 @@ public class CajaService {
     private final CobroRepository cobroRepository;
     private final PagoRepository pagoRepository;
     private final ReservaRepository reservaRepository;
+    private final GastoRepository gastoRepository;
     private final CobroService cobroService;
+    private final GastoService gastoService;
 
     @Transactional(readOnly = true)
     public CierreCajaResponse cierre(LocalDate fecha) {
@@ -51,10 +54,10 @@ public class CajaService {
 
         List<Cobro> cobros = cobroRepository.findDelDia(desde, hasta);
 
-        Map<MedioCobro, BigDecimal> totales = new HashMap<>();
-        Map<MedioCobro, Long> cantidades = new HashMap<>();
+        Map<MedioPago, BigDecimal> totales = new HashMap<>();
+        Map<MedioPago, Long> cantidades = new HashMap<>();
         for (Cobro cobro : cobros) {
-            MedioCobro medio = cobro.getMedio() != null ? cobro.getMedio() : MedioCobro.OTRO;
+            MedioPago medio = cobro.getMedio() != null ? cobro.getMedio() : MedioPago.OTRO;
             totales.merge(medio, cobro.getMonto(), BigDecimal::add);
             cantidades.merge(medio, 1L, Long::sum);
         }
@@ -70,7 +73,13 @@ public class CajaService {
 
         BigDecimal totalMostrador = totales.values().stream()
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal efectivoEsperado = totales.getOrDefault(MedioCobro.EFECTIVO, BigDecimal.ZERO);
+
+        // Lo que salió del cajón también cuenta para el arqueo: si se pagó al gasista en
+        // efectivo, esa plata ya no está aunque nadie la haya cobrado de menos.
+        BigDecimal egresos = gastoRepository.totalDelDia(fecha);
+        BigDecimal egresosEfectivo = gastoRepository.totalDelDiaPorMedio(fecha, MedioPago.EFECTIVO);
+        BigDecimal efectivoEsperado = totales.getOrDefault(MedioPago.EFECTIVO, BigDecimal.ZERO)
+                .subtract(egresosEfectivo);
 
         // Las señas de Mercado Pago se acreditan en la cuenta, no en el cajón: van
         // separadas para que el arqueo de efectivo cierre.
@@ -92,6 +101,10 @@ public class CajaService {
                 .turnosConSaldo(saldo.turnos())
                 .saldoPendiente(saldo.monto())
                 .movimientos(cobros.stream().map(cobroService::aResponse).toList())
+                .egresos(egresos)
+                .egresosEfectivo(egresosEfectivo)
+                .resultado(totalMostrador.add(seniasOnline).subtract(egresos))
+                .gastos(gastoService.listarDelDia(fecha))
                 .build();
     }
 

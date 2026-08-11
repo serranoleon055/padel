@@ -58,6 +58,10 @@ public class EstadisticasResponse {
         private String mes;
         private BigDecimal turnos;
         private BigDecimal inscripciones;
+        /** Egresos del mes: sin esto el gráfico muestra facturación, no rentabilidad. */
+        private BigDecimal egresos;
+        /** Ingresos menos egresos. */
+        private BigDecimal resultado;
     }
 
     @Getter

@@ -2,7 +2,7 @@ package com.padel.rankpadel.dto.request;
 
 import java.math.BigDecimal;
 
-import com.padel.rankpadel.enums.MedioCobro;
+import com.padel.rankpadel.enums.MedioPago;
 
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotNull;
@@ -21,7 +21,7 @@ public class CobroRequest {
     private BigDecimal monto;
 
     @NotNull(message = "Indicá cómo se cobró")
-    private MedioCobro medio;
+    private MedioPago medio;
 
     @Size(max = 300)
     private String notas;

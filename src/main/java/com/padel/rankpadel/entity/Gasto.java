@@ -1,19 +1,18 @@
 package com.padel.rankpadel.entity;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
+import com.padel.rankpadel.enums.CategoriaGasto;
 import com.padel.rankpadel.enums.MedioPago;
 
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
-import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -22,9 +21,8 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 /**
- * Plata que entró en el club por un turno. La seña online vive en {@link Pago};
- * acá va lo que se cobra en el mostrador (el saldo, o el turno completo si no
- * hubo seña).
+ * Un egreso del club. La fecha es la del gasto (no la de carga): una factura de luz de
+ * marzo pagada en abril tiene que pesar en marzo.
  */
 @Getter
 @Setter
@@ -32,26 +30,30 @@ import lombok.Setter;
 @NoArgsConstructor
 @Builder
 @Entity
-@Table(name = "cobros")
-public class Cobro {
+@Table(name = "gastos")
+public class Gasto {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "reserva_id")
-    private Reserva reserva;
+    private LocalDate fecha;
+
+    @Enumerated(EnumType.STRING)
+    private CategoriaGasto categoria;
+
+    private String descripcion;
 
     private BigDecimal monto;
 
     @Enumerated(EnumType.STRING)
     private MedioPago medio;
 
-    private LocalDateTime cobradoEn;
+    private String proveedor;
 
-    /** Usuario del panel que lo registró: si falta plata hay que saber quién cobró. */
     private String registradoPor;
 
     private String notas;
+
+    private LocalDateTime creadoEn;
 }

@@ -20,12 +20,14 @@ import com.padel.rankpadel.dto.response.EstadisticasResponse.CategoriaDemanda;
 import com.padel.rankpadel.dto.response.EstadisticasResponse.EmbudoTorneo;
 import com.padel.rankpadel.dto.response.EstadisticasResponse.IngresoMes;
 import com.padel.rankpadel.dto.response.EstadisticasResponse.OcupacionFranja;
+import com.padel.rankpadel.entity.Gasto;
 import com.padel.rankpadel.entity.Reserva;
 import com.padel.rankpadel.entity.SolicitudInscripcion;
 import com.padel.rankpadel.entity.Torneo;
 import com.padel.rankpadel.enums.EstadoReserva;
 import com.padel.rankpadel.enums.EstadoSolicitud;
 import com.padel.rankpadel.enums.EstadoTorneo;
+import com.padel.rankpadel.repository.GastoRepository;
 import com.padel.rankpadel.repository.ParejaRepository;
 import com.padel.rankpadel.repository.ReservaRepository;
 import com.padel.rankpadel.repository.SolicitudInscripcionRepository;
@@ -42,6 +44,7 @@ public class EstadisticaService {
     private final TorneoRepository torneoRepository;
     private final ParejaRepository parejaRepository;
     private final SolicitudInscripcionRepository solicitudInscripcionRepository;
+    private final GastoRepository gastoRepository;
 
     // Un NO_SHOW ocupó la cancha igual (nadie más pudo usar ese horario), así que cuenta
     // para el mapa de ocupación. Lo que NO cuenta es la facturación completa: ver
@@ -74,7 +77,8 @@ public class EstadisticaService {
                 .filter(solicitud -> solicitud.getTorneo() != null && deLugarTorneo(solicitud.getTorneo(), lugarId))
                 .toList();
 
-        List<IngresoMes> ingresosPorMes = calcularIngresosPorMes(hoy, ocupadas, solicitudes);
+        List<Gasto> gastos = gastoRepository.findByFechaBetweenOrderByFechaDesc(desde, hoy);
+        List<IngresoMes> ingresosPorMes = calcularIngresosPorMes(hoy, ocupadas, solicitudes, gastos);
 
         long reservasTotales = reservas.size();
         long reservasCanceladas = reservas.stream()
@@ -141,7 +145,8 @@ public class EstadisticaService {
                 .toList();
     }
 
-    private List<IngresoMes> calcularIngresosPorMes(LocalDate hoy, List<Reserva> ocupadas, List<SolicitudInscripcion> solicitudes) {
+    private List<IngresoMes> calcularIngresosPorMes(LocalDate hoy, List<Reserva> ocupadas,
+            List<SolicitudInscripcion> solicitudes, List<Gasto> gastos) {
         List<IngresoMes> ingresos = new ArrayList<>();
         YearMonth actual = YearMonth.from(hoy);
         for (int i = 5; i >= 0; i--) {
@@ -156,7 +161,18 @@ public class EstadisticaService {
                             && YearMonth.from(solicitud.getCreadoEn()).equals(mes))
                     .map(this::ingresoSolicitud)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
-            ingresos.add(IngresoMes.builder().mes(mes.toString()).turnos(turnos).inscripciones(inscripciones).build());
+            BigDecimal egresos = gastos.stream()
+                    .filter(gasto -> gasto.getFecha() != null && YearMonth.from(gasto.getFecha()).equals(mes))
+                    .map(Gasto::getMonto)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            ingresos.add(IngresoMes.builder()
+                    .mes(mes.toString())
+                    .turnos(turnos)
+                    .inscripciones(inscripciones)
+                    .egresos(egresos)
+                    .resultado(turnos.add(inscripciones).subtract(egresos))
+                    .build());
         }
         return ingresos;
     }
