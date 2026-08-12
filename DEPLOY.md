@@ -9,6 +9,75 @@ plataforma.
 > Un proyecto de Railway **por cliente**: los datos de un club nunca comparten base
 > con los de otro.
 
+> **Para la demo pública no hace falta nada de esto**: se puede levantar entera en planes
+> gratuitos. Ver [§0](#0-demo-p%C3%BAblica-en-planes-gratuitos). Lo de abajo es lo que va
+> cuando entra un cliente pagando.
+
+---
+
+## 0. Demo pública en planes gratuitos
+
+La instancia que se le muestra a un cliente antes de venderle. Cero costo, y a propósito
+en servicios distintos de los de producción: si la demo se cae un domingo no pasa nada, y
+no comparte base con ningún club real.
+
+| Pieza | Servicio | Plan | Límite que importa |
+|---|---|---|---|
+| Frontend | **Cloudflare Pages** | Gratis | Permite uso comercial (Vercel Hobby **no**) |
+| Backend | **Render** (Docker) | Gratis | 512 MB de RAM, 750 h/mes, **se duerme a los 15 min** |
+| Base MySQL | **Aiven** | Gratis | 1 GB de datos, 1 GB de RAM, sin tarjeta |
+| Fotos | **Cloudinary** | Gratis | Obligatorio: Render free **no tiene disco persistente** |
+| Visitas | **Cloudflare Web Analytics** | Gratis | Sin cookies → no hace falta cartel de consentimiento |
+| Despertador | **UptimeRobot** | Gratis | Un chequeo cada 5 min a `/actuator/health` |
+
+### Orden de armado
+
+1. **Base (Aiven).** Crear un servicio MySQL free. De la pantalla de conexión salen host,
+   puerto, usuario, contraseña y nombre de la base. Aiven **exige TLS**, así que la URL va
+   con SSL y con el huso horario fijado (si no, las fechas se corren):
+
+   ```
+   jdbc:mysql://HOST:PUERTO/defaultdb?sslMode=REQUIRED&serverTimezone=America/Argentina/Buenos_Aires&characterEncoding=UTF-8
+   ```
+
+   No hay que crear ninguna tabla: **Flyway arma el esquema solo** en el primer arranque.
+
+2. **Backend (Render).** `New` → `Blueprint` apuntando al repo: toma el `render.yaml` que
+   está en la raíz. Después, en Environment, cargar los valores marcados `sync:false`:
+   `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `ADMIN_INITIAL_PASSWORD`,
+   `APP_CORS_ALLOWED_ORIGINS` (la URL del front, sin barra final) y las tres de Cloudinary.
+   `JWT_SECRET` lo genera Render solo.
+
+   El blueprint ya deja puestas `PAGOS_MODO_DEMO=true` y `PAGOS_DEMO_PUBLICA=true`. **Las
+   dos hacen falta**: con la primera sola, `SecretsGuard` aborta el arranque a propósito
+   (aprobar pagos solos contra una base remota, en un cliente real, sería regalar turnos).
+
+3. **Frontend (Cloudflare Pages).** Conectar el repo del front. Build `npm run build`,
+   salida `dist`, variable `VITE_API_BASE_URL` = la URL de Render. Los archivos `_headers`
+   (CSP) y `_redirects` (deep links del SPA) ya están en `public/`.
+
+4. **Visitas.** En Cloudflare → Web Analytics → habilitarlo para el sitio de Pages. El
+   beacon lo inyecta Pages solo; el CSP de `_headers` ya lo permite. Si alguna vez las
+   visitas dan cero, lo primero a mirar es que `static.cloudflareinsights.com` siga en el
+   `script-src`.
+
+5. **Despertador.** UptimeRobot → monitor HTTP(s) a `https://TU-BACKEND.onrender.com/actuator/health`
+   cada 5 minutos. Sin esto, la primera visita del día espera un minuto en blanco, que es
+   exactamente lo que no puede pasar cuando el cliente entra desde el celular. 750 h/mes
+   alcanzan justo para un servicio despierto todo el mes (730 h), pero **solo uno**: si se
+   levanta una segunda demo en la misma cuenta, las dos se suspenden a fin de mes.
+
+### Lo que hay que saber de esta demo
+
+- **Es una demo, y se dice.** Los pagos están simulados (`PAGOS_MODO_DEMO`): nadie cobra
+  ni paga nada de verdad.
+- **La base es chica.** 1 GB alcanza de sobra para datos de muestra; no es donde va un
+  club real.
+- **Sin backups.** El workflow de backup apunta a la base de producción. Si la demo se
+  pierde, se vuelve a sembrar.
+- **Cambiar la URL en dos lugares más** cuando el dominio de la demo cambie: el
+  `og:url`/`og:image` de `index.html` del front y la página final de `Propuesta-fuente.html`.
+
 ---
 
 ## 1. Backend (Railway)

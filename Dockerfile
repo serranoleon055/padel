@@ -27,4 +27,8 @@ RUN mkdir -p /data/uploads && chown -R appuser:appuser /data
 USER appuser
 EXPOSE 8080
 ENV SPRING_PROFILES_ACTIVE=prod
-ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+# El puerto lo asigna la plataforma por env (Railway y Render mandan PORT); 8080 es el
+# de local. Y el heap se define como porcentaje de la RAM del contenedor en vez de un
+# -Xmx fijo: la instancia gratis de Render tiene 512 MB y un -Xmx pensado para 1 GB la
+# mata con OOM apenas arranca.
+ENTRYPOINT ["sh", "-c", "java -XX:MaxRAMPercentage=70 -jar /app/app.jar --server.port=${PORT:-8080}"]

@@ -1,0 +1,50 @@
+# Blueprint de Render para la instancia de DEMOSTRACIÓN (plan gratuito).
+#
+# La base NO va acá: el plan gratis de Render solo da PostgreSQL y este sistema es MySQL
+# con migraciones de Flyway. La base es una MySQL gestionada aparte (Aiven free) y entra
+# por DB_URL. Los valores marcados sync:false se cargan a mano en el panel de Render para
+# que no queden escritos en el repo.
+#
+# Ojo con el plan free: la instancia se duerme a los 15 minutos sin tráfico y tarda cerca
+# de un minuto en despertar. Para una demo que se le muestra a un cliente eso no sirve,
+# así que hay un chequeo externo (UptimeRobot) pegándole a /actuator/health. Ver DEPLOY.md.
+services:
+  - type: web
+    name: rankpadel-demo
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /actuator/health
+    autoDeployTrigger: commit
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      # Modo demo: los pagos se aprueban solos para que el cliente pueda probar el
+      # circuito sin gastar. PAGOS_DEMO_PUBLICA es el permiso explícito que pide
+      # SecretsGuard para dejar correr eso contra una base remota; sin las dos, la
+      # aplicación aborta el arranque a propósito.
+      - key: PAGOS_MODO_DEMO
+        value: "true"
+      - key: PAGOS_DEMO_PUBLICA
+        value: "true"
+      - key: DB_URL
+        sync: false
+      - key: DB_USERNAME
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ADMIN_INITIAL_PASSWORD
+        sync: false
+      - key: APP_CORS_ALLOWED_ORIGINS
+        sync: false
+      # Sin Cloudinary las fotos se guardan en el disco del contenedor, y el plan free
+      # no tiene disco persistente: se pierden en cada deploy y en cada despertada.
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
