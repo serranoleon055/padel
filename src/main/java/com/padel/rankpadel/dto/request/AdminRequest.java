@@ -1,5 +1,7 @@
 package com.padel.rankpadel.dto.request;
 
+import com.padel.rankpadel.enums.RolUsuario;
+
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
@@ -23,4 +25,7 @@ public class AdminRequest {
     // la clave del panel es la llave de todos los datos del club.
     @Size(min = 10, max = 120)
     private String password;
+
+    /** Null = dueño. Un usuario sin rol explícito tiene acceso completo. */
+    private RolUsuario rol;
 }

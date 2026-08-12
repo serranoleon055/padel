@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.padel.rankpadel.dto.request.AdminRequest;
 import com.padel.rankpadel.dto.response.AdminResponse;
 import com.padel.rankpadel.entity.Admin;
+import com.padel.rankpadel.enums.RolUsuario;
 import com.padel.rankpadel.exception.EstadoInvalidoException;
 import com.padel.rankpadel.exception.ResourceNotFoundException;
 import com.padel.rankpadel.repository.AdminRepository;
@@ -47,6 +48,7 @@ public class AdminService {
         Admin admin = new Admin();
         admin.setUsername(username);
         admin.setPasswordHash(passwordEncoder.encode(password));
+        admin.setRol(request.getRol() != null ? request.getRol() : RolUsuario.DUENIO);
 
         return toResponse(adminRepository.save(admin));
     }
@@ -68,6 +70,10 @@ public class AdminService {
         if (password != null) {
             admin.setPasswordHash(passwordEncoder.encode(password));
         }
+        if (request.getRol() != null) {
+            exigirQueQuedeUnDuenio(id, request.getRol());
+            admin.setRol(request.getRol());
+        }
 
         return toResponse(adminRepository.save(admin));
     }
@@ -80,6 +86,9 @@ public class AdminService {
         if (adminRepository.count() <= 1) {
             throw new EstadoInvalidoException("No se puede eliminar el ultimo administrador.");
         }
+        // Borrar al último dueño deja al club sin nadie que pueda administrarlo, aunque
+        // queden usuarios de mostrador.
+        exigirQueQuedeUnDuenio(id, RolUsuario.MOSTRADOR);
 
         adminRepository.delete(admin);
     }
@@ -88,7 +97,24 @@ public class AdminService {
         return AdminResponse.builder()
                 .id(admin.getId())
                 .username(admin.getUsername())
+                .rol(admin.getRol().name())
                 .build();
+    }
+
+    /**
+     * Dejar el club sin ningún dueño lo encerraría afuera de su propio sistema: nadie
+     * podría volver a crear usuarios, ver la rentabilidad ni reabrir una caja.
+     */
+    private void exigirQueQuedeUnDuenio(Long idQueCambia, RolUsuario rolNuevo) {
+        if (rolNuevo == RolUsuario.DUENIO) {
+            return;
+        }
+        boolean quedaOtro = adminRepository.findAll().stream()
+                .anyMatch(otro -> !otro.getId().equals(idQueCambia) && otro.getRol() == RolUsuario.DUENIO);
+        if (!quedaOtro) {
+            throw new EstadoInvalidoException(
+                    "Tiene que quedar al menos un usuario dueño: sin eso nadie puede administrar el club.");
+        }
     }
 
     private String normalizeUsername(String username) {

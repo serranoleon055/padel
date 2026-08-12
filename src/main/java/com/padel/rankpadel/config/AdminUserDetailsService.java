@@ -22,10 +22,12 @@ public class AdminUserDetailsService implements UserDetailsService {
         Admin admin = adminRepository.findByUsername(username)
                 .orElseThrow(() -> new UsernameNotFoundException("Admin no encontrado: " + username));
 
+        // ADMIN lo tienen los dos: es "entró al panel", y sobre eso se apoyan casi todas
+        // las reglas. El rol propio se suma aparte, para lo que solo puede el dueño.
         return User.builder()
                 .username(admin.getUsername())
                 .password(admin.getPasswordHash())
-                .roles("ADMIN")
+                .roles("ADMIN", admin.getRol().name())
                 .build();
     }
 }

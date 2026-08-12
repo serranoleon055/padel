@@ -73,8 +73,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/plantillas-puntos/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/ranking/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/canchas/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/tarifas-cancha").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/promociones-cancha").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/configuracion-sede").permitAll()
+                        // La franja de auspiciantes la ve el jugador; administrarlos, no.
+                        .requestMatchers(HttpMethod.GET, "/api/sponsors").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/reservas/disponibilidad").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/reservas").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/reservas/lote").permitAll()
@@ -87,6 +89,35 @@ public class SecurityConfig {
                         .requestMatchers("/uploads/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/v3/api-docs.yaml").permitAll()
+
+                        // ── Solo el dueño ──────────────────────────────────────────
+                        // Lo que el del mostrador no tiene por qué ver ni poder hacer.
+                        // El criterio: los números del negocio, la plata que sale, y
+                        // todo lo que sirva para tapar un faltante.
+                        //
+                        // Reabrir un cierre es el caso más claro: si el que cobró puede
+                        // reabrir su propio arqueo, la firma de V51 no vale nada.
+                        .requestMatchers(HttpMethod.DELETE, "/api/caja/cierre").hasRole("DUENIO")
+                        .requestMatchers("/api/estadisticas/**").hasRole("DUENIO")
+                        .requestMatchers("/api/gastos/**").hasRole("DUENIO")
+                        .requestMatchers("/api/admins/**").hasRole("DUENIO")
+                        // Vender necesita leer el catálogo; cambiar precios, comprar
+                        // mercadería, ajustar o dar de baja stock, no.
+                        .requestMatchers(HttpMethod.POST, "/api/productos/**").hasRole("DUENIO")
+                        .requestMatchers(HttpMethod.PUT, "/api/productos/**").hasRole("DUENIO")
+                        .requestMatchers(HttpMethod.DELETE, "/api/productos/**").hasRole("DUENIO")
+                        .requestMatchers("/api/proveedores/**").hasRole("DUENIO")
+                        .requestMatchers(HttpMethod.DELETE, "/api/torneos/**").hasRole("DUENIO")
+                        .requestMatchers(HttpMethod.PUT, "/api/configuracion-sede").hasRole("DUENIO")
+                        .requestMatchers(HttpMethod.POST, "/api/configuracion-sede/**").hasRole("DUENIO")
+                        .requestMatchers("/api/promociones-cancha/**").hasRole("DUENIO")
+                        // El horario define qué se vende y a qué hora: es la misma
+                        // decisión que el precio, y el mostrador no la toma. Leerlo sí
+                        // puede: la grilla de turnos lo necesita para ordenar la jornada.
+                        .requestMatchers(HttpMethod.POST, "/api/horarios-cancha/**").hasRole("DUENIO")
+                        .requestMatchers("/api/sponsors/**").hasRole("DUENIO")
+                        .requestMatchers("/api/importar/**").hasRole("DUENIO")
+
                         .anyRequest().hasRole("ADMIN"))
                 .exceptionHandling(ex -> ex.authenticationEntryPoint(
                         (request, response, authException) -> response.sendError(

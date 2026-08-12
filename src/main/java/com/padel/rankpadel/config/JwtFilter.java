@@ -41,9 +41,13 @@ public class JwtFilter extends OncePerRequestFilter {
 
         if (jwtUtil.validateToken(token)) {
             String username = jwtUtil.extractUsername(token);
-            String role = jwtUtil.extractRole(token);
-            UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(username, null,
-                    List.of(new SimpleGrantedAuthority(role)));
+            // ROLE_ADMIN va siempre: significa "entró al panel", y es sobre lo que se
+            // apoyan casi todas las reglas. El rol propio se suma para las que no.
+            List<SimpleGrantedAuthority> permisos = List.of(
+                    new SimpleGrantedAuthority(JwtUtil.DEFAULT_ROLE),
+                    new SimpleGrantedAuthority(jwtUtil.extractRole(token)));
+            UsernamePasswordAuthenticationToken authToken =
+                    new UsernamePasswordAuthenticationToken(username, null, permisos);
             SecurityContextHolder.getContext().setAuthentication(authToken);
         }
 

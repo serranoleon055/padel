@@ -15,4 +15,5 @@ public class AdminResponse {
 
     private Long id;
     private String username;
+    private String rol;
 }

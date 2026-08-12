@@ -29,10 +29,12 @@ public class AuthService {
             throw new CredencialesInvalidasException("Credenciales invalidas");
         }
 
-        String token = jwtUtil.generateToken(admin.getUsername());
-
         LoginResponse respuesta = new LoginResponse();
-        respuesta.setToken(token);
+        respuesta.setToken(jwtUtil.generateToken(admin.getUsername(), admin.getRol()));
+        // El rol viaja también fuera del token para que el panel sepa qué menús mostrar
+        // sin tener que abrir el JWT. La restricción real la hace el backend igual.
+        respuesta.setRol(admin.getRol().name());
+        respuesta.setUsuario(admin.getUsername());
         return respuesta;
     }
 }

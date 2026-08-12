@@ -1,0 +1,11 @@
+-- Roles: dueño y mostrador.
+--
+-- V51 dejó registrado quién cobró y quién anuló cada movimiento, pero ese registro no
+-- sirve para nada si todos entran con el mismo usuario. Con esto el chico del mostrador
+-- tiene su propio acceso: puede atender turnos, cobrar y vender, pero no ve la
+-- rentabilidad del club, no toca los gastos y no puede reabrir un arqueo ya firmado
+-- —justo lo que haría alguien para tapar un faltante—.
+--
+-- Los usuarios que ya existen quedan como DUEÑO: son los de Leon y los del club, y
+-- bajarles permisos en una migración los dejaría afuera de su propio sistema.
+ALTER TABLE admins ADD COLUMN rol VARCHAR(20) NOT NULL DEFAULT 'DUENIO';
