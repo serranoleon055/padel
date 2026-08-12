@@ -38,7 +38,20 @@ ALTER TABLE configuracion_puntos
     ADD COLUMN categoria_id BIGINT NULL AFTER torneo_id,
     ADD CONSTRAINT fk_config_categoria FOREIGN KEY (categoria_id) REFERENCES categorias(id);
 
-CREATE TEMPORARY TABLE tmp_config_puntos AS
+-- `CREATE TEMPORARY TABLE ... AS SELECT` arma la tabla sin clave primaria, y algunos
+-- MySQL gestionados (Aiven, por replicación) traen `sql_require_primary_key` activado
+-- por defecto y la rechazan. El local no lo exige, así que esto pasó desapercibido.
+CREATE TEMPORARY TABLE tmp_config_puntos (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    nombre_ronda VARCHAR(50) NOT NULL,
+    puntos_ganador INT NOT NULL DEFAULT 0,
+    puntos_perdedor INT NOT NULL DEFAULT 0,
+    orden INT NOT NULL,
+    torneo_id BIGINT NOT NULL,
+    categoria_id BIGINT
+);
+
+INSERT INTO tmp_config_puntos (nombre_ronda, puntos_ganador, puntos_perdedor, orden, torneo_id, categoria_id)
     SELECT cp.nombre_ronda, cp.puntos_ganador, cp.puntos_perdedor, cp.orden, cp.torneo_id,
            tc.categoria_id AS categoria_id
     FROM configuracion_puntos cp
