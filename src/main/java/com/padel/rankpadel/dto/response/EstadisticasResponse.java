@@ -17,6 +17,12 @@ import lombok.Setter;
 public class EstadisticasResponse {
 
     private List<OcupacionFranja> heatmap;
+    /**
+     * Hora a la que arranca la jornada del club. El gráfico de horas se dibuja desde acá
+     * hacia adelante: en un club que abre 10 y cierra 2, las 00 y la 1 son el final de la
+     * noche y ordenarlas por número las ponía primero, antes de la hora de apertura.
+     */
+    private int horaApertura;
     private List<CanchaUso> canchasMasUsadas;
     private List<IngresoMes> ingresosPorMes;
     private long reservasTotales;
@@ -27,6 +33,93 @@ public class EstadisticasResponse {
     private double tasaNoShow;
     private List<EmbudoTorneo> embudoTorneos;
     private List<CategoriaDemanda> categoriasDemandadas;
+
+    /** El resumen del mes en curso contra el anterior: ¿el club está creciendo o no? */
+    private ResumenMes mesActual;
+    /** Ocupación de cada cancha: horas vendidas sobre horas que el club tuvo abierto. */
+    private List<OcupacionCancha> ocupacionPorCancha;
+    /** Qué deja plata en el mostrador, ordenado por ganancia y no por facturación. */
+    private List<ProductoRendimiento> rendimientoProductos;
+    /** Quiénes sostienen el club: los que más gastaron en el período. */
+    private List<ClienteTop> mejoresClientes;
+    private Kiosco kiosco;
+
+    @Getter
+    @Setter
+    @AllArgsConstructor
+    @NoArgsConstructor
+    @Builder
+    public static class ResumenMes {
+        private String mes;
+        private BigDecimal facturado;
+        private BigDecimal facturadoMesAnterior;
+        /** Variación porcentual contra el mes anterior. Null si el anterior fue cero. */
+        private Double variacion;
+        private BigDecimal resultado;
+        private long turnosJugados;
+        /** Cancha + consumo promedio por turno: cuánto deja cada grupo que entra. */
+        private BigDecimal ticketPromedio;
+        /** Porcentaje de horas vendidas sobre las horas que el club estuvo abierto. */
+        private double ocupacion;
+        /** Lo que el club facturó por cada hora que tuvo la cancha abierta. */
+        private BigDecimal ingresoPorHoraAbierta;
+        /** Plata de turnos ya jugados que todavía no se cobró. */
+        private BigDecimal deudaAcumulada;
+    }
+
+    @Getter
+    @Setter
+    @AllArgsConstructor
+    @NoArgsConstructor
+    @Builder
+    public static class OcupacionCancha {
+        private String canchaNombre;
+        private long horasVendidas;
+        private long horasDisponibles;
+        private double ocupacion;
+        private BigDecimal facturado;
+    }
+
+    @Getter
+    @Setter
+    @AllArgsConstructor
+    @NoArgsConstructor
+    @Builder
+    public static class ProductoRendimiento {
+        private Long productoId;
+        private String nombre;
+        private long unidades;
+        private BigDecimal facturado;
+        /** Precio menos costo, con los valores congelados en cada venta. */
+        private BigDecimal ganancia;
+        /** Ganancia sobre facturación, en porcentaje. */
+        private Double margen;
+    }
+
+    @Getter
+    @Setter
+    @AllArgsConstructor
+    @NoArgsConstructor
+    @Builder
+    public static class ClienteTop {
+        private Long clienteId;
+        private String nombre;
+        private long turnos;
+        private BigDecimal gastado;
+    }
+
+    @Getter
+    @Setter
+    @AllArgsConstructor
+    @NoArgsConstructor
+    @Builder
+    public static class Kiosco {
+        private BigDecimal facturado;
+        private BigDecimal ganancia;
+        /** Plata parada en el depósito, valuada a costo. */
+        private BigDecimal capitalEnStock;
+        private long productosBajoMinimo;
+    }
 
     @Getter
     @Setter
@@ -58,6 +151,8 @@ public class EstadisticasResponse {
         private String mes;
         private BigDecimal turnos;
         private BigDecimal inscripciones;
+        /** Lo vendido en el mostrador: pelotas, bebidas, alquiler de paletas. */
+        private BigDecimal ventas;
         /** Egresos del mes: sin esto el gráfico muestra facturación, no rentabilidad. */
         private BigDecimal egresos;
         /** Ingresos menos egresos. */
@@ -73,8 +168,26 @@ public class EstadisticasResponse {
         private Long torneoId;
         private String torneoNombre;
         private long inscriptos;
+        /**
+         * Suma de los cupos de las categorías del torneo. Queda en null si alguna
+         * categoría no tiene cupo definido: un total incompleto se leería como techo real.
+         */
         private Integer cupo;
         private BigDecimal ingresos;
+        /** El cupo se define por categoría, así que el detalle es lo que el club mira. */
+        private List<CupoCategoria> categorias;
+    }
+
+    @Getter
+    @Setter
+    @AllArgsConstructor
+    @NoArgsConstructor
+    @Builder
+    public static class CupoCategoria {
+        private Long categoriaId;
+        private String categoriaNombre;
+        private long inscriptos;
+        private Integer cupo;
     }
 
     @Getter

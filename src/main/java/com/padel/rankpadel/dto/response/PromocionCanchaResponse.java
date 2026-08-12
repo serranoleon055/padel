@@ -1,6 +1,7 @@
 package com.padel.rankpadel.dto.response;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalTime;
 
 import lombok.AllArgsConstructor;
@@ -14,7 +15,7 @@ import lombok.Setter;
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-public class TarifaCanchaResponse {
+public class PromocionCanchaResponse {
 
     private Long id;
     private Long canchaId;
@@ -24,5 +25,11 @@ public class TarifaCanchaResponse {
     private LocalTime horaDesde;
     private LocalTime horaHasta;
     private BigDecimal precioPorHora;
+    private LocalDate vigenteDesde;
+    private LocalDate vigenteHasta;
+
+    /** La promoción está corriendo hoy: es lo que el club mira de un vistazo. */
+    private boolean vigente;
+
     private boolean activo;
 }

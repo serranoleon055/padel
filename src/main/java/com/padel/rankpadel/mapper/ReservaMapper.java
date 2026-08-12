@@ -18,15 +18,23 @@ import com.padel.rankpadel.util.MontosReserva;
 public class ReservaMapper {
 
     public ReservaResponse aResponse(Reserva reserva) {
-        return aResponse(reserva, null);
+        return aResponse(reserva, null, null);
+    }
+
+    public ReservaResponse aResponse(Reserva reserva, BigDecimal cobradoEnClub) {
+        return aResponse(reserva, cobradoEnClub, null);
     }
 
     /**
-     * @param cobradoEnClub total ya cobrado en el mostrador. Se pasa desde afuera porque
-     *                      los listados lo resuelven en una sola consulta agrupada.
+     * @param cobradoEnClub  total ya cobrado en el mostrador.
+     * @param consumoACuenta lo que el grupo consumió y quedó anotado en la cuenta del
+     *                       turno, todavía sin pagar.
+     *                       <p>Los dos llegan desde afuera porque los listados los
+     *                       resuelven en una consulta agrupada, no fila por fila.
      */
-    public ReservaResponse aResponse(Reserva reserva, BigDecimal cobradoEnClub) {
+    public ReservaResponse aResponse(Reserva reserva, BigDecimal cobradoEnClub, BigDecimal consumoACuenta) {
         Pago pago = reserva.getPago();
+        BigDecimal consumo = consumoACuenta != null ? consumoACuenta : BigDecimal.ZERO;
         return ReservaResponse.builder()
                 .id(reserva.getId())
                 .canchaId(reserva.getCancha() != null ? reserva.getCancha().getId() : null)
@@ -34,6 +42,7 @@ public class ReservaMapper {
                 .fecha(reserva.getFecha())
                 .horaInicio(reserva.getHoraInicio())
                 .horaFin(reserva.getHoraFin())
+                .duracionMin(reserva.getDuracionMin())
                 .estado(reserva.getEstado() != null ? reserva.getEstado().name() : null)
                 .clienteNombre(reserva.getClienteNombre())
                 .clienteTelefono(reserva.getClienteTelefono())
@@ -46,7 +55,9 @@ public class ReservaMapper {
                 .clienteId(reserva.getCliente() != null ? reserva.getCliente().getId() : null)
                 .seniaPagada(MontosReserva.seniaPagada(reserva))
                 .totalCobrado(cobradoEnClub != null ? cobradoEnClub : BigDecimal.ZERO)
-                .saldoPendiente(MontosReserva.saldo(reserva, cobradoEnClub))
+                .consumoACuenta(consumo)
+                .totalTurno(MontosReserva.precio(reserva).add(consumo))
+                .saldoPendiente(MontosReserva.saldo(reserva, cobradoEnClub, consumo))
                 .build();
     }
 }

@@ -25,7 +25,7 @@ public class TurnoFijoResponse {
     private int diaSemana;
     private LocalTime horaInicio;
     private LocalTime horaFin;
-    private int slots;
+    private int duracionMin;
     private String clienteNombre;
     private String clienteTelefono;
     private BigDecimal precioPactado;

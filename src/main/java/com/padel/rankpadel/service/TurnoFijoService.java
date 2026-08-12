@@ -5,6 +5,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -23,6 +24,7 @@ import com.padel.rankpadel.dto.response.TurnoFijoResponse;
 import com.padel.rankpadel.entity.Cancha;
 import com.padel.rankpadel.entity.TurnoFijo;
 import com.padel.rankpadel.exception.EstadoInvalidoException;
+import com.padel.rankpadel.mapper.TurnoFijoMapper;
 import com.padel.rankpadel.exception.ResourceNotFoundException;
 import com.padel.rankpadel.repository.CanchaRepository;
 import com.padel.rankpadel.repository.ReservaRepository;
@@ -40,12 +42,22 @@ public class TurnoFijoService {
 
     private static final Logger log = LoggerFactory.getLogger(TurnoFijoService.class);
 
+    private static final String[] NOMBRES_DIA = {
+            "lunes", "martes", "miércoles", "jueves", "viernes", "sábados", "domingos" };
+    private static final DateTimeFormatter FECHA = DateTimeFormatter.ofPattern("dd/MM");
+    private static final DateTimeFormatter HORA = DateTimeFormatter.ofPattern("HH:mm");
+
+    /** En el mensaje de error alcanza con las primeras fechas: la lista completa no se lee. */
+    private static final int MAX_CONFLICTOS_A_MOSTRAR = 4;
+
     private final TurnoFijoRepository turnoFijoRepository;
     private final CanchaRepository canchaRepository;
     private final ReservaRepository reservaRepository;
     private final ReservaService reservaService;
+    private final ClienteService clienteService;
     private final DisponibilidadCanchaService disponibilidadCanchaService;
     private final NotificacionService notificacionService;
+    private final TurnoFijoMapper turnoFijoMapper;
 
     @Value("${app.turnos-fijos.semanas-adelante:6}")
     private int semanasAdelante;
@@ -59,13 +71,17 @@ public class TurnoFijoService {
 
     @Transactional
     public TurnoFijoResponse crear(TurnoFijoRequest request) {
+        Cancha cancha = canchaValida(request.getCanchaId());
         TurnoFijo turnoFijo = TurnoFijo.builder()
-                .cancha(canchaValida(request.getCanchaId()))
+                .cancha(cancha)
                 .diaSemana(request.getDiaSemana())
                 .horaInicio(request.getHoraInicio())
-                .slots(request.getSlots() != null ? request.getSlots() : 1)
+                .duracionMin(duracionValida(cancha, request.getDuracionMin()))
                 .clienteNombre(request.getClienteNombre().trim())
                 .clienteTelefono(request.getClienteTelefono().trim())
+                // La ficha se arma sola, igual que con una reserva suelta: el abonado es
+                // el cliente que más plata deja, no puede quedar sin historial.
+                .cliente(clienteService.buscarOCrear(request.getClienteNombre(), request.getClienteTelefono()))
                 .precioPactado(request.getPrecioPactado())
                 .vigenteDesde(request.getVigenteDesde())
                 .vigenteHasta(request.getVigenteHasta())
@@ -74,6 +90,7 @@ public class TurnoFijoService {
                 .creadoEn(LocalDateTime.now())
                 .build();
         validarVigencia(turnoFijo);
+        validarSinSuperposicion(turnoFijo, null);
         turnoFijoRepository.save(turnoFijo);
         return aResponse(turnoFijo);
     }
@@ -85,24 +102,29 @@ public class TurnoFijoService {
                 || !turnoFijo.getHoraInicio().equals(request.getHoraInicio())
                 || !turnoFijo.getCancha().getId().equals(request.getCanchaId());
 
-        turnoFijo.setCancha(canchaValida(request.getCanchaId()));
+        // Las reservas ya generadas quedaron en el horario viejo: se liberan antes de
+        // validar el nuevo, o el abono chocaría contra sus propios turnos. Si la
+        // validación falla, la transacción vuelve todo atrás.
+        if (cambiaElHorario) {
+            reservaService.cancelarFuturasDeTurnoFijo(turnoFijo.getId(), LocalDate.now());
+        }
+
+        Cancha cancha = canchaValida(request.getCanchaId());
+        turnoFijo.setCancha(cancha);
         turnoFijo.setDiaSemana(request.getDiaSemana());
         turnoFijo.setHoraInicio(request.getHoraInicio());
-        turnoFijo.setSlots(request.getSlots() != null ? request.getSlots() : 1);
+        turnoFijo.setDuracionMin(duracionValida(cancha, request.getDuracionMin()));
         turnoFijo.setClienteNombre(request.getClienteNombre().trim());
         turnoFijo.setClienteTelefono(request.getClienteTelefono().trim());
+        turnoFijo.setCliente(clienteService.buscarOCrear(
+                request.getClienteNombre(), request.getClienteTelefono()));
         turnoFijo.setPrecioPactado(request.getPrecioPactado());
         turnoFijo.setVigenteDesde(request.getVigenteDesde());
         turnoFijo.setVigenteHasta(request.getVigenteHasta());
         turnoFijo.setNotas(request.getNotas());
         validarVigencia(turnoFijo);
+        validarSinSuperposicion(turnoFijo, turnoFijo.getId());
         turnoFijoRepository.save(turnoFijo);
-
-        // Si cambió cancha, día u hora, las reservas ya generadas quedaron en el horario
-        // viejo: se dan de baja y se regeneran en el nuevo.
-        if (cambiaElHorario) {
-            reservaService.cancelarFuturasDeTurnoFijo(turnoFijo.getId(), LocalDate.now());
-        }
         return aResponse(turnoFijo);
     }
 
@@ -147,65 +169,60 @@ public class TurnoFijoService {
     }
 
     private int generar(TurnoFijo turnoFijo, List<GeneracionTurnosFijosResponse.Conflicto> conflictos) {
+        List<LocalDate> fechas = fechasAGenerar(turnoFijo);
+        if (fechas.isEmpty()) {
+            return 0;
+        }
+
+        // Las fechas ya generadas se saltean en cualquier estado: si el club dio de baja
+        // la semana que el cliente avisó que no venía, no hay que volver a crearla.
+        Set<LocalDate> yaGeneradas = new HashSet<>(
+                reservaRepository.findFechasGeneradas(turnoFijo.getId(), fechas.get(0)));
+        int generadas = 0;
+        for (LocalDate fecha : fechas) {
+            if (!yaGeneradas.contains(fecha)) {
+                generadas += generarFecha(turnoFijo, fecha, conflictos);
+            }
+        }
+        return generadas;
+    }
+
+    /** Fechas del día de la semana del abono dentro de la ventana de anticipación. */
+    private List<LocalDate> fechasAGenerar(TurnoFijo turnoFijo) {
         LocalDate hoy = LocalDate.now();
         LocalDate desde = turnoFijo.getVigenteDesde().isAfter(hoy) ? turnoFijo.getVigenteDesde() : hoy;
         LocalDate hasta = hoy.plusWeeks(semanasAdelante);
         if (turnoFijo.getVigenteHasta() != null && turnoFijo.getVigenteHasta().isBefore(hasta)) {
             hasta = turnoFijo.getVigenteHasta();
         }
-        if (desde.isAfter(hasta)) {
-            return 0;
-        }
 
-        // Las fechas ya generadas se saltean en cualquier estado: si el club dio de baja
-        // la semana que el cliente avisó que no venía, no hay que volver a crearla.
-        Set<LocalDate> yaGeneradas = new HashSet<>(reservaRepository.findFechasGeneradas(turnoFijo.getId(), desde));
-        BigDecimal precioPorSlot = precioPorSlot(turnoFijo);
-        int duracion = disponibilidadCanchaService.duracionSlot(turnoFijo.getCancha().getId());
-
-        int generadas = 0;
-        LocalDate fecha = desde;
-        while (!fecha.isAfter(hasta)) {
-            if (fecha.getDayOfWeek().getValue() != turnoFijo.getDiaSemana() || yaGeneradas.contains(fecha)) {
-                fecha = fecha.plusDays(1);
-                continue;
+        List<LocalDate> fechas = new ArrayList<>();
+        for (LocalDate fecha = desde; !fecha.isAfter(hasta); fecha = fecha.plusDays(1)) {
+            if (fecha.getDayOfWeek().getValue() == turnoFijo.getDiaSemana()) {
+                fechas.add(fecha);
             }
-            generadas += generarFecha(turnoFijo, fecha, duracion, precioPorSlot, conflictos);
-            fecha = fecha.plusDays(1);
         }
-        return generadas;
+        return fechas;
     }
 
-    private int generarFecha(TurnoFijo turnoFijo, LocalDate fecha, int duracion, BigDecimal precioPorSlot,
+    private int generarFecha(TurnoFijo turnoFijo, LocalDate fecha,
             List<GeneracionTurnosFijosResponse.Conflicto> conflictos) {
-        int generadas = 0;
-        for (int i = 0; i < turnoFijo.getSlots(); i++) {
-            LocalTime horaInicio = turnoFijo.getHoraInicio().plusMinutes((long) duracion * i);
-            if (reservaService.crearParaTurnoFijo(turnoFijo, fecha, horaInicio, precioPorSlot).isPresent()) {
-                generadas++;
-            } else {
-                conflictos.add(GeneracionTurnosFijosResponse.Conflicto.builder()
-                        .turnoFijoId(turnoFijo.getId())
-                        .clienteNombre(turnoFijo.getClienteNombre())
-                        .canchaNombre(turnoFijo.getCancha().getNombre())
-                        .fecha(fecha)
-                        .horaInicio(horaInicio.toString())
-                        .motivo("El horario ya estaba ocupado")
-                        .build());
-                log.warn("Turno fijo {} ({}): {} {} ya estaba ocupado, no se generó",
-                        turnoFijo.getId(), turnoFijo.getClienteNombre(), fecha, horaInicio);
-            }
+        LocalTime horaInicio = turnoFijo.getHoraInicio();
+        if (reservaService.crearParaTurnoFijo(turnoFijo, fecha, horaInicio, turnoFijo.getPrecioPactado())
+                .isPresent()) {
+            return 1;
         }
-        return generadas;
-    }
-
-    /** El precio pactado es del turno completo; en la reserva se guarda por horario. */
-    private BigDecimal precioPorSlot(TurnoFijo turnoFijo) {
-        if (turnoFijo.getPrecioPactado() == null) {
-            return null;
-        }
-        int slots = Math.max(turnoFijo.getSlots(), 1);
-        return turnoFijo.getPrecioPactado().divide(BigDecimal.valueOf(slots), 2, RoundingMode.HALF_UP);
+        conflictos.add(GeneracionTurnosFijosResponse.Conflicto.builder()
+                .turnoFijoId(turnoFijo.getId())
+                .clienteNombre(turnoFijo.getClienteNombre())
+                .canchaNombre(turnoFijo.getCancha().getNombre())
+                .fecha(fecha)
+                .horaInicio(horaInicio.toString())
+                .motivo("El horario ya estaba ocupado")
+                .build());
+        log.warn("Turno fijo {} ({}): {} {} ya estaba ocupado, no se generó",
+                turnoFijo.getId(), turnoFijo.getClienteNombre(), fecha, horaInicio);
+        return 0;
     }
 
     private void validarVigencia(TurnoFijo turnoFijo) {
@@ -213,6 +230,84 @@ public class TurnoFijoService {
                 && turnoFijo.getVigenteHasta().isBefore(turnoFijo.getVigenteDesde())) {
             throw new EstadoInvalidoException("La fecha de fin no puede ser anterior a la de inicio");
         }
+    }
+
+    /**
+     * Un abono no puede pisar otro abono ni turnos ya agendados. Antes esto se detectaba
+     * recién al generar las reservas —el abono se guardaba igual y el club se enteraba por
+     * un mail— así que se podían cargar dos turnos superpuestos en la misma cancha.
+     */
+    private void validarSinSuperposicion(TurnoFijo turnoFijo, Long idExcluido) {
+        int inicio = minutos(turnoFijo.getHoraInicio());
+        int fin = inicio + turnoFijo.getDuracionMin();
+
+        for (TurnoFijo otro : turnoFijoRepository.findActivosDelDia(
+                turnoFijo.getCancha().getId(), turnoFijo.getDiaSemana(), idExcluido)) {
+            if (!vigenciasSeCruzan(turnoFijo, otro)) {
+                continue;
+            }
+            int otroInicio = minutos(otro.getHoraInicio());
+            int otroFin = otroInicio + otro.getDuracionMin();
+            if (inicio < otroFin && otroInicio < fin) {
+                throw new EstadoInvalidoException(
+                        "Se superpone con el turno fijo de %s, que ya tiene esta cancha los %s de %s a %s."
+                                .formatted(otro.getClienteNombre(), NOMBRES_DIA[otro.getDiaSemana() - 1],
+                                        hhmm(otroInicio), hhmm(otroFin)));
+            }
+        }
+
+        List<String> ocupadas = fechasOcupadas(turnoFijo);
+        if (!ocupadas.isEmpty()) {
+            throw new EstadoInvalidoException(
+                    "Estos días ya tienen la cancha tomada en ese horario: %s. Liberá esos turnos o elegí otro horario."
+                            .formatted(String.join(", ", ocupadas)));
+        }
+    }
+
+    /** Fechas próximas en las que el abono no entraría porque el horario ya está tomado. */
+    private List<String> fechasOcupadas(TurnoFijo turnoFijo) {
+        List<String> ocupadas = new ArrayList<>();
+        LocalTime desde = turnoFijo.getHoraInicio();
+        for (LocalDate fecha : fechasAGenerar(turnoFijo)) {
+            if (!disponibilidadCanchaService.rangoLibre(
+                    turnoFijo.getCancha().getId(), fecha, desde, turnoFijo.getDuracionMin())) {
+                ocupadas.add(fecha.format(FECHA) + " a las " + desde.format(HORA));
+            }
+            if (ocupadas.size() == MAX_CONFLICTOS_A_MOSTRAR) {
+                break;
+            }
+        }
+        return ocupadas;
+    }
+
+    private boolean vigenciasSeCruzan(TurnoFijo uno, TurnoFijo otro) {
+        LocalDate finUno = uno.getVigenteHasta();
+        LocalDate finOtro = otro.getVigenteHasta();
+        boolean unoTerminaAntes = finUno != null && finUno.isBefore(otro.getVigenteDesde());
+        boolean otroTerminaAntes = finOtro != null && finOtro.isBefore(uno.getVigenteDesde());
+        return !unoTerminaAntes && !otroTerminaAntes;
+    }
+
+    private static int minutos(LocalTime hora) {
+        return hora.getHour() * 60 + hora.getMinute();
+    }
+
+    private static String hhmm(int minutosDelDia) {
+        return "%02d:%02d".formatted((minutosDelDia / 60) % 24, minutosDelDia % 60);
+    }
+
+    /** El abono se agenda con una de las duraciones que la sucursal vende. */
+    private int duracionValida(Cancha cancha, Integer pedida) {
+        List<Integer> ofrecidas = disponibilidadCanchaService.duracionesOfrecidas(cancha.getId());
+        if (pedida == null) {
+            return ofrecidas.get(0);
+        }
+        if (!ofrecidas.contains(pedida)) {
+            throw new EstadoInvalidoException("Esta cancha se alquila por "
+                    + ofrecidas.stream().map(String::valueOf).collect(java.util.stream.Collectors.joining(", "))
+                    + " minutos.");
+        }
+        return pedida;
     }
 
     private Cancha canchaValida(Long canchaId) {
@@ -230,31 +325,6 @@ public class TurnoFijoService {
     }
 
     private TurnoFijoResponse aResponse(TurnoFijo turnoFijo) {
-        Cancha cancha = turnoFijo.getCancha();
-        int duracion = disponibilidadCanchaService.duracionSlot(cancha.getId());
-        LocalDate generadoHasta = reservaRepository
-                .findFechasGeneradas(turnoFijo.getId(), LocalDate.now()).stream()
-                .max(Comparator.naturalOrder())
-                .orElse(null);
-
-        return TurnoFijoResponse.builder()
-                .id(turnoFijo.getId())
-                .canchaId(cancha.getId())
-                .canchaNombre(cancha.getNombre())
-                .lugarId(cancha.getLugar() != null ? cancha.getLugar().getId() : null)
-                .lugarNombre(cancha.getLugar() != null ? cancha.getLugar().getNombre() : null)
-                .diaSemana(turnoFijo.getDiaSemana())
-                .horaInicio(turnoFijo.getHoraInicio())
-                .horaFin(turnoFijo.getHoraInicio().plusMinutes((long) duracion * turnoFijo.getSlots()))
-                .slots(turnoFijo.getSlots())
-                .clienteNombre(turnoFijo.getClienteNombre())
-                .clienteTelefono(turnoFijo.getClienteTelefono())
-                .precioPactado(turnoFijo.getPrecioPactado())
-                .vigenteDesde(turnoFijo.getVigenteDesde())
-                .vigenteHasta(turnoFijo.getVigenteHasta())
-                .activo(turnoFijo.isActivo())
-                .notas(turnoFijo.getNotas())
-                .generadoHasta(generadoHasta)
-                .build();
+        return turnoFijoMapper.aResponse(turnoFijo);
     }
 }

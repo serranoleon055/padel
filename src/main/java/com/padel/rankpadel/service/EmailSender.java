@@ -44,21 +44,29 @@ public class EmailSender {
             log.debug("[notificación] SMTP sin configurar, no se envía: {}", asunto);
             return;
         }
-        JavaMailSender sender = mailSender.getIfAvailable();
-        if (sender == null) {
-            return;
-        }
         try {
-            SimpleMailMessage mensaje = new SimpleMailMessage();
-            mensaje.setFrom(remitente);
-            mensaje.setTo(destino);
-            mensaje.setSubject(asunto);
-            mensaje.setText(cuerpo);
-            sender.send(mensaje);
-            log.info("[notificación] Enviada a {}: {}", destino, asunto);
+            enviarAhora(destino, asunto, cuerpo);
         } catch (RuntimeException e) {
             // Que falle un mail nunca puede tumbar una reserva ni un pago.
             log.error("[notificación] No se pudo enviar '{}' a {}: {}", asunto, destino, e.getMessage());
         }
+    }
+
+    /**
+     * Envía en el hilo del request y deja propagar el error. Lo usa el mail de prueba del
+     * panel: ahí el club necesita saber si funcionó, no que falle en silencio.
+     */
+    public void enviarAhora(String destino, String asunto, String cuerpo) {
+        JavaMailSender sender = mailSender.getIfAvailable();
+        if (sender == null) {
+            throw new IllegalStateException("No hay un servidor de correo configurado");
+        }
+        SimpleMailMessage mensaje = new SimpleMailMessage();
+        mensaje.setFrom(remitente);
+        mensaje.setTo(destino);
+        mensaje.setSubject(asunto);
+        mensaje.setText(cuerpo);
+        sender.send(mensaje);
+        log.info("[notificación] Enviada a {}: {}", destino, asunto);
     }
 }

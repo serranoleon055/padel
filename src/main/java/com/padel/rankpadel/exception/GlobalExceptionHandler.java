@@ -12,6 +12,7 @@ import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
@@ -96,6 +97,23 @@ public class GlobalExceptionHandler {
                 .timestamp(LocalDateTime.now())
                 .build();
         return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).body(apiError);
+    }
+
+    /**
+     * Dos personas tocaron lo mismo al mismo tiempo. Pasa sobre todo con el stock: dos
+     * ventas simultáneas de la última unidad. No es un error del que la carga: el dato
+     * cambió abajo, hay que volver a mirarlo.
+     */
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<ApiError> handleConflicto(ObjectOptimisticLockingFailureException ex) {
+        log.warn("Escritura concurrente: {}", ex.getMessage());
+        ApiError apiError = ApiError.builder()
+                .status(409)
+                .error("Conflict")
+                .mensaje("Alguien más modificó esto hace un segundo. Actualizá la pantalla y volvé a intentar.")
+                .timestamp(LocalDateTime.now())
+                .build();
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(apiError);
     }
 
     private ResponseEntity<ApiError> badRequest(String mensaje) {

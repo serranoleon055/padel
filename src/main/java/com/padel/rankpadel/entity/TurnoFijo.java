@@ -45,12 +45,22 @@ public class TurnoFijo {
 
     private LocalTime horaInicio;
 
-    /** Cantidad de slots consecutivos: 2 = turno de dos horas. */
+    /** Cuánto dura el turno del abono, en minutos (60, 90 o 120). */
     @Builder.Default
-    private int slots = 1;
+    private int duracionMin = 60;
 
     private String clienteNombre;
     private String clienteTelefono;
+
+    /**
+     * Ficha del cliente. Los campos de arriba se conservan como texto crudo —lo que el
+     * club escribió al cargar el abono— igual que en {@link Reserva}. La ficha se enlaza
+     * por clave foránea y no por comparación de teléfonos: escritos distintos, "385 689
+     * 4061" y "3856894061" son la misma persona, y comparando texto no lo eran.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "cliente_id")
+    private Cliente cliente;
 
     /** Precio pactado del turno completo. Si es null, se usa la tarifa de la cancha. */
     private BigDecimal precioPactado;

@@ -25,4 +25,9 @@ public class CobroResponse {
     private String notas;
     private String clienteNombre;
     private String canchaNombre;
+
+    /** Con fecha, el cobro está anulado y no suma en ningún total. */
+    private LocalDateTime anuladoEn;
+    private String anuladoPor;
+    private String motivoAnulacion;
 }

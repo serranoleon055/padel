@@ -37,7 +37,8 @@ public class CierreCajaResponse {
     private long turnosConSaldo;
     private BigDecimal saldoPendiente;
 
-    private List<CobroResponse> movimientos;
+    /** Un movimiento por pago real, no por reserva: un turno de dos horas es una línea. */
+    private List<MovimientoCajaResponse> movimientos;
 
     /** Egresos del día (todos los medios). */
     private BigDecimal egresos;
@@ -46,6 +47,34 @@ public class CierreCajaResponse {
     /** Ingresos menos egresos: lo que de verdad quedó. */
     private BigDecimal resultado;
     private List<GastoResponse> gastos;
+
+    /** Ventas de mostrador del día: pelotas, bebidas, alquiler de paletas. */
+    private List<VentaResponse> ventas;
+    private BigDecimal totalVentas;
+
+    /**
+     * El arqueo firmado, si el día ya se cerró. Mientras es null, el día sigue abierto y
+     * los totales de arriba se recalculan en cada consulta.
+     */
+    private Arqueo arqueo;
+
+    /** Lo que se anuló en el día. No suma en ningún total; está para poder auditarlo. */
+    private List<CobroResponse> cobrosAnulados;
+    private List<VentaResponse> ventasAnuladas;
+
+    @Getter
+    @Setter
+    @AllArgsConstructor
+    @NoArgsConstructor
+    @Builder
+    public static class Arqueo {
+        private BigDecimal efectivoContado;
+        /** Contado menos esperado. Negativo = faltó plata en el cajón. */
+        private BigDecimal diferencia;
+        private String cerradoPor;
+        private java.time.LocalDateTime cerradoEn;
+        private String notas;
+    }
 
     @Getter
     @Setter

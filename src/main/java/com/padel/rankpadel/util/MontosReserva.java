@@ -34,10 +34,21 @@ public final class MontosReserva {
                 .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
     }
 
-    /** Lo que todavía falta cobrar, nunca negativo. */
+    /** Lo que todavía falta cobrar de la cancha sola, nunca negativo. */
     public static BigDecimal saldo(Reserva reserva, BigDecimal cobradoEnClub) {
+        return saldo(reserva, cobradoEnClub, BigDecimal.ZERO);
+    }
+
+    /**
+     * Lo que falta cobrar del turno entero: la cancha más lo que el grupo consumió y
+     * dejó anotado en la cuenta, menos la seña y lo ya cobrado en el mostrador.
+     *
+     * @param consumoACuenta ventas del turno sin medio de pago, es decir, todavía impagas.
+     */
+    public static BigDecimal saldo(Reserva reserva, BigDecimal cobradoEnClub, BigDecimal consumoACuenta) {
         BigDecimal cobrado = cobradoEnClub != null ? cobradoEnClub : BigDecimal.ZERO;
-        BigDecimal restante = precio(reserva).subtract(seniaPagada(reserva)).subtract(cobrado);
-        return restante.max(BigDecimal.ZERO);
+        BigDecimal consumo = consumoACuenta != null ? consumoACuenta : BigDecimal.ZERO;
+        return precio(reserva).add(consumo).subtract(seniaPagada(reserva)).subtract(cobrado)
+                .max(BigDecimal.ZERO);
     }
 }

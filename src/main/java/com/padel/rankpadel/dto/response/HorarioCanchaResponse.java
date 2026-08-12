@@ -20,7 +20,7 @@ public class HorarioCanchaResponse {
     private LocalTime horaApertura;
     private LocalTime horaCierre;
     private String diasActivos;
-    private int duracionSlotMin;
+    private String duracionesOfrecidas;
     private int anticipacionDias;
     private boolean activo;
 }

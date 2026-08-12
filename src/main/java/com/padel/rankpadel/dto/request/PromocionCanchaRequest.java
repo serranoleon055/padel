@@ -1,6 +1,7 @@
 package com.padel.rankpadel.dto.request;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalTime;
 
 import jakarta.validation.constraints.DecimalMin;
@@ -15,12 +16,12 @@ import lombok.Setter;
 @Getter
 @Setter
 @NoArgsConstructor
-public class TarifaCanchaRequest {
+public class PromocionCanchaRequest {
 
     @NotNull(message = "Elegí la cancha")
     private Long canchaId;
 
-    @NotBlank(message = "Poné un nombre a la franja")
+    @NotBlank(message = "Poné un nombre a la promoción")
     @Size(max = 60)
     private String nombre;
 
@@ -37,4 +38,10 @@ public class TarifaCanchaRequest {
     @NotNull(message = "Indicá el precio por hora")
     @DecimalMin(value = "0.01", message = "El precio tiene que ser mayor a cero")
     private BigDecimal precioPorHora;
+
+    /** Null = arranca ya. */
+    private LocalDate vigenteDesde;
+
+    /** Null = sigue hasta que la den de baja. */
+    private LocalDate vigenteHasta;
 }

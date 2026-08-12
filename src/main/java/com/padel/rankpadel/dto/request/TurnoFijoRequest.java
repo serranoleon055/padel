@@ -32,9 +32,19 @@ public class TurnoFijoRequest {
     @NotNull(message = "Indicá la hora de inicio")
     private LocalTime horaInicio;
 
-    @Min(value = 1, message = "El turno tiene que ser de al menos un horario")
-    @Max(value = 6, message = "Un turno fijo no puede ser de más de 6 horarios seguidos")
-    private Integer slots;
+    /**
+     * Minutos del turno. El tope de verdad —que la cancha venda esa duración— lo pone
+     * {@code TurnoFijoService.duracionValida}, que además nombra las que sí se venden.
+     * Acá van solo los bordes groseros.
+     *
+     * <p>Ojo: este campo se llamaba {@code slots} y contaba horarios, no minutos. Al
+     * renombrarlo quedó el {@code @Max(6)} de entonces, y como el front manda 60, 90 o
+     * 120, <b>toda alta de abono respondía 400</b> con un mensaje que hablaba de
+     * "6 horarios seguidos". Si se vuelve a tocar la unidad, tocar también estos límites.
+     */
+    @Min(value = 30, message = "El turno tiene que ser de al menos 30 minutos")
+    @Max(value = 360, message = "Un turno fijo no puede ser de más de 6 horas")
+    private Integer duracionMin;
 
     @NotBlank(message = "El nombre del cliente es obligatorio")
     @Size(max = 120)

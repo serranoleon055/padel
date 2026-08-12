@@ -27,6 +27,9 @@ public class SolicitudReservaRequest {
     @NotNull
     private LocalTime horaInicio;
 
+    /** Minutos del turno. Null = la duración más corta que vende el club. */
+    private Integer duracionMin;
+
     @NotBlank
     private String clienteNombre;
 

@@ -74,15 +74,15 @@ public class PagoService {
         Cancha cancha = canchaRepository.findById(request.getCanchaId())
                 .orElseThrow(() -> new ResourceNotFoundException("Cancha", request.getCanchaId()));
 
-        // Cada horario se cotiza por separado: un turno de 20 a 22 puede cruzar dos
-        // franjas con tarifas distintas.
-        BigDecimal montoTotal = BigDecimal.ZERO;
-        for (LocalTime horaInicio : request.getHorarios().stream().distinct().toList()) {
-            BigDecimal precio = disponibilidadCanchaService.precioSlot(cancha, request.getFecha(), horaInicio);
-            if (precio == null) {
-                throw new EstadoInvalidoException("Esta cancha no tiene precio configurado para pago online");
-            }
-            montoTotal = montoTotal.add(precio);
+        // El turno se cotiza tramo por tramo: uno de 20 a 22 puede cruzar el fin de una
+        // promoción y pagar cada mitad a su precio.
+        int duracion = request.getDuracionMin() != null
+                ? request.getDuracionMin()
+                : disponibilidadCanchaService.duracionPorDefecto(cancha.getId());
+        BigDecimal montoTotal = disponibilidadCanchaService.precio(
+                cancha, request.getFecha(), request.getHoraInicio(), duracion);
+        if (montoTotal == null) {
+            throw new EstadoInvalidoException("Esta cancha no tiene precio configurado para pago online");
         }
         montoTotal = montoTotal.setScale(2, RoundingMode.HALF_UP);
 
@@ -92,13 +92,11 @@ public class PagoService {
         Pago pago = crearPagoPendiente(ConceptoPago.RESERVA, montoTotal, montoSenia, porcentaje,
                 request.getClienteNombre(), request.getClienteTelefono());
 
-        List<Reserva> reservas = reservaService.crearReservasParaPago(request, pago, expiracionPagoMinutos);
-        // La preferencia tiene que caducar con el turno más próximo a vencer, no después.
-        LocalDateTime expiraEn = reservas.stream()
-                .map(Reserva::getExpiraEn)
-                .filter(Objects::nonNull)
-                .min(LocalDateTime::compareTo)
-                .orElse(LocalDateTime.now().plusMinutes(expiracionPagoMinutos));
+        Reserva reserva = reservaService.crearReservaParaPago(request, pago, expiracionPagoMinutos);
+        // La preferencia tiene que caducar con el turno, no después.
+        LocalDateTime expiraEn = reserva.getExpiraEn() != null
+                ? reserva.getExpiraEn()
+                : LocalDateTime.now().plusMinutes(expiracionPagoMinutos);
 
         String urlResultado = backUrlBase + "/reservar/pago/resultado?pago=" + pago.getReferenciaExterna();
         return iniciarPreferencia(pago, "Seña reserva de cancha " + cancha.getNombre(), urlResultado, expiraEn);

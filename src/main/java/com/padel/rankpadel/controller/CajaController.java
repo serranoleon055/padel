@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.padel.rankpadel.dto.request.CierreCajaRequest;
 import com.padel.rankpadel.dto.request.CobroRequest;
 import com.padel.rankpadel.dto.request.GastoRequest;
 import com.padel.rankpadel.dto.response.CierreCajaResponse;
@@ -49,16 +50,30 @@ public class CajaController {
         return ResponseEntity.ok(cobroService.listarDeReserva(reservaId));
     }
 
+    /** Baja lógica: el cobro deja de sumar pero la fila queda con el autor y el motivo. */
     @DeleteMapping("/cobros/{id}")
-    public ResponseEntity<Void> anularCobro(@PathVariable Long id) {
-        cobroService.anular(id);
-        return ResponseEntity.noContent().build();
+    public ResponseEntity<CobroResponse> anularCobro(@PathVariable Long id,
+            @RequestParam(required = false) String motivo) {
+        return ResponseEntity.ok(cobroService.anular(id, motivo));
     }
 
     @GetMapping("/caja")
     public ResponseEntity<CierreCajaResponse> cierre(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha) {
         return ResponseEntity.ok(cajaService.cierre(fecha != null ? fecha : LocalDate.now()));
+    }
+
+    /** Firma el arqueo del día: alguien contó el cajón y deja asentado cuánto había. */
+    @PostMapping("/caja/cierre")
+    public ResponseEntity<CierreCajaResponse> cerrar(@Valid @RequestBody CierreCajaRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(cajaService.cerrar(request));
+    }
+
+    /** Reabre un día cerrado para poder corregirlo. Queda registrado en el log. */
+    @DeleteMapping("/caja/cierre")
+    public ResponseEntity<CierreCajaResponse> reabrir(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha) {
+        return ResponseEntity.ok(cajaService.reabrir(fecha));
     }
 
     @PostMapping("/gastos")

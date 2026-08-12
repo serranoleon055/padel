@@ -17,6 +17,19 @@ public interface ParejaRepository extends JpaRepository<Pareja, Long> {
     @Query("SELECT p.torneo.id, COUNT(p) FROM Pareja p GROUP BY p.torneo.id")
     List<Object[]> contarPorTorneo();
 
+    /**
+     * Parejas por torneo y categoría, en una sola consulta. El cupo de un torneo se
+     * define por categoría: contarlas de a una por torneo daría un N+1 y contarlas
+     * todas juntas daría el número equivocado ("36/12" en vez de "12/12" por categoría).
+     */
+    @Query("""
+            SELECT p.torneo.id, c.id, c.nombre, COUNT(p)
+            FROM Pareja p JOIN p.categoria c
+            WHERE p.torneo.id IN :torneoIds
+            GROUP BY p.torneo.id, c.id, c.nombre
+            """)
+    List<Object[]> contarPorTorneoYCategoria(@Param("torneoIds") List<Long> torneoIds);
+
     List<Pareja> findByTorneoIdAndCategoriaId(Long torneoId, Long categoriaId);
 
     long countByTorneoIdAndCategoriaId(Long torneoId, Long categoriaId);

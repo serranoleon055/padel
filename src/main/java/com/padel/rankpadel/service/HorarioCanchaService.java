@@ -1,7 +1,9 @@
 package com.padel.rankpadel.service;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -65,7 +67,7 @@ public class HorarioCanchaService {
                 .horaApertura(request.getHoraApertura())
                 .horaCierre(request.getHoraCierre())
                 .diasActivos(request.getDiasActivos())
-                .duracionSlotMin(request.getDuracionSlotMin() != null ? request.getDuracionSlotMin() : 60)
+                .duracionesOfrecidas(normalizarDuraciones(request.getDuracionesOfrecidas()))
                 .anticipacionDias(request.getAnticipacionDias() != null ? request.getAnticipacionDias() : 14)
                 .activo(true)
                 .build();
@@ -79,6 +81,33 @@ public class HorarioCanchaService {
                 .toList();
     }
 
+    /**
+     * Duraciones que el club vende, en minutos. Se filtran a múltiplos de la
+     * granularidad de la agenda: una de 45 minutos no se podría dibujar ni reservar.
+     */
+    private String normalizarDuraciones(String crudo) {
+        if (crudo == null || crudo.isBlank()) {
+            return "60,120";
+        }
+        List<Integer> validas = new ArrayList<>();
+        for (String token : crudo.split(",")) {
+            try {
+                int minutos = Integer.parseInt(token.trim());
+                if (minutos > 0 && minutos % DisponibilidadCanchaService.GRANULARIDAD_MIN == 0
+                        && !validas.contains(minutos)) {
+                    validas.add(minutos);
+                }
+            } catch (NumberFormatException ignorada) {
+                // Se descarta en silencio: abajo hay un valor por defecto usable.
+            }
+        }
+        if (validas.isEmpty()) {
+            throw new EstadoInvalidoException("Elegí al menos una duración de turno (60, 90 o 120 minutos).");
+        }
+        Collections.sort(validas);
+        return validas.stream().map(String::valueOf).collect(Collectors.joining(","));
+    }
+
     private HorarioCanchaResponse aResponse(HorarioCancha horario) {
         return HorarioCanchaResponse.builder()
                 .id(horario.getId())
@@ -86,7 +115,7 @@ public class HorarioCanchaService {
                 .horaApertura(horario.getHoraApertura())
                 .horaCierre(horario.getHoraCierre())
                 .diasActivos(horario.getDiasActivos())
-                .duracionSlotMin(horario.getDuracionSlotMin())
+                .duracionesOfrecidas(horario.getDuracionesOfrecidas())
                 .anticipacionDias(horario.getAnticipacionDias())
                 .activo(horario.isActivo())
                 .build();

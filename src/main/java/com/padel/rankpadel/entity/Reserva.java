@@ -4,9 +4,12 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.ArrayList;
+import java.util.List;
 
 import com.padel.rankpadel.enums.EstadoReserva;
 
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -16,6 +19,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -42,7 +46,15 @@ public class Reserva {
 
     private LocalDate fecha;
     private LocalTime horaInicio;
+    /** Derivada de {@code horaInicio + duracionMin}. Se guarda porque hay queries que filtran por ella. */
     private LocalTime horaFin;
+
+    /**
+     * Cuánto dura el turno. Un turno es UNA reserva: antes uno de dos horas eran dos
+     * filas de una hora, y eso hacía que se contara doble en todos lados.
+     */
+    @Builder.Default
+    private int duracionMin = 60;
 
     // Precio del turno congelado al reservar: la facturación histórica no debe
     // cambiar cuando el club actualiza la tarifa de la cancha.
@@ -57,7 +69,14 @@ public class Reserva {
     private LocalDateTime creadoEn;
     private LocalDateTime confirmadoEn;
     private LocalDateTime expiraEn;
-    private String claveSlot;
+
+    /**
+     * Bloques de 30 minutos que este turno tiene tomados. Vacío = el horario está libre
+     * (turno cancelado, rechazado o vencido). Es la fuente de la garantía de unicidad.
+     */
+    @Builder.Default
+    @OneToMany(mappedBy = "reserva", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<ReservaSlot> slots = new ArrayList<>();
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "pago_id")

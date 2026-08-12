@@ -1,6 +1,7 @@
 package com.padel.rankpadel.service;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
@@ -21,6 +22,7 @@ import com.padel.rankpadel.exception.EstadoInvalidoException;
 import com.padel.rankpadel.exception.ResourceNotFoundException;
 import com.padel.rankpadel.repository.CobroRepository;
 import com.padel.rankpadel.repository.ReservaRepository;
+import com.padel.rankpadel.repository.VentaRepository;
 import com.padel.rankpadel.util.MontosReserva;
 
 import lombok.RequiredArgsConstructor;
@@ -44,9 +46,12 @@ public class CobroService {
 
     private final CobroRepository cobroRepository;
     private final ReservaRepository reservaRepository;
+    private final VentaRepository ventaRepository;
+    private final CajaCerradaGuard cajaCerradaGuard;
 
     @Transactional
     public CobroResponse registrar(Long reservaId, CobroRequest request) {
+        cajaCerradaGuard.exigirDiaAbierto(LocalDate.now());
         Reserva reserva = reservaRepository.findById(reservaId)
                 .orElseThrow(() -> new ResourceNotFoundException("Reserva", reservaId));
         if (!COBRABLES.contains(reserva.getEstado())) {
@@ -54,7 +59,11 @@ public class CobroService {
                     + reserva.getEstado());
         }
 
-        BigDecimal saldo = MontosReserva.saldo(reserva, cobroRepository.totalCobradoDe(reservaId));
+        // El saldo es el de la cuenta entera: la cancha más lo que el grupo consumió y
+        // dejó anotado. Se cobra todo junto, en un solo movimiento.
+        BigDecimal saldo = MontosReserva.saldo(reserva,
+                cobroRepository.totalCobradoDe(reservaId),
+                consumoACuenta(reservaId));
         if (saldo.compareTo(BigDecimal.ZERO) == 0) {
             throw new EstadoInvalidoException("Este turno ya está pago");
         }
@@ -77,20 +86,41 @@ public class CobroService {
 
     @Transactional(readOnly = true)
     public List<CobroResponse> listarDeReserva(Long reservaId) {
-        return cobroRepository.findByReservaIdOrderByCobradoEnAsc(reservaId).stream()
+        return cobroRepository.findVigentesDeReserva(reservaId).stream()
                 .map(this::aResponse)
                 .toList();
     }
 
-    /** Anula un cobro cargado por error. Queda en el log quién lo hizo y por cuánto. */
+    /**
+     * Anula un cobro cargado por error. Es baja lógica: el movimiento sale de la caja y
+     * del saldo del turno, pero la fila queda con el autor y el motivo. Un movimiento de
+     * plata que desaparece sin rastro hace que el cierre de un día pasado cambie solo.
+     */
     @Transactional
-    public void anular(Long id) {
+    public CobroResponse anular(Long id, String motivo) {
         Cobro cobro = cobroRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Cobro", id));
+        if (cobro.estaAnulado()) {
+            throw new EstadoInvalidoException("Ese cobro ya está anulado");
+        }
+        cajaCerradaGuard.exigirDiaAbierto(cobro.getCobradoEn().toLocalDate());
+
+        cobro.setAnuladoEn(LocalDateTime.now());
+        cobro.setAnuladoPor(usuarioActual());
+        cobro.setMotivoAnulacion(motivo != null && !motivo.isBlank() ? motivo.trim() : null);
+        cobroRepository.save(cobro);
+
         log.info("[caja] {} anuló el cobro {} de ${} ({}) de la reserva {}",
                 usuarioActual(), id, cobro.getMonto(), cobro.getMedio(),
                 cobro.getReserva() != null ? cobro.getReserva().getId() : null);
-        cobroRepository.delete(cobro);
+        return aResponse(cobro);
+    }
+
+    private BigDecimal consumoACuenta(Long reservaId) {
+        return ventaRepository.consumoACuentaDe(List.of(reservaId)).stream()
+                .findFirst()
+                .map(VentaRepository.ConsumoPorReserva::getTotal)
+                .orElse(BigDecimal.ZERO);
     }
 
     private String usuarioActual() {
@@ -111,6 +141,9 @@ public class CobroService {
                 .clienteNombre(reserva != null ? reserva.getClienteNombre() : null)
                 .canchaNombre(reserva != null && reserva.getCancha() != null
                         ? reserva.getCancha().getNombre() : null)
+                .anuladoEn(cobro.getAnuladoEn())
+                .anuladoPor(cobro.getAnuladoPor())
+                .motivoAnulacion(cobro.getMotivoAnulacion())
                 .build();
     }
 }

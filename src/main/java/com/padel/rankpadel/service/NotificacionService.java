@@ -7,11 +7,13 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.padel.rankpadel.dto.response.EstadoNotificacionesResponse;
 import com.padel.rankpadel.dto.response.GeneracionTurnosFijosResponse.Conflicto;
 import com.padel.rankpadel.entity.ConfiguracionSede;
 import com.padel.rankpadel.entity.Pago;
 import com.padel.rankpadel.entity.Reserva;
 import com.padel.rankpadel.entity.SolicitudInscripcion;
+import com.padel.rankpadel.exception.EstadoInvalidoException;
 import com.padel.rankpadel.repository.ConfiguracionSedeRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -161,6 +163,65 @@ public class NotificacionService {
         emailSender.enviar(destino, "Turnos fijos con conflicto de horario", cuerpo);
     }
 
+    /** Estado de los avisos, para mostrarlo en Configuración de sede. */
+    @Transactional(readOnly = true)
+    public EstadoNotificacionesResponse estado() {
+        String delClub = emailDelClub();
+        String destino = delClub != null ? delClub : porDefecto();
+        return EstadoNotificacionesResponse.builder()
+                .servidorConfigurado(emailSender.configurado())
+                .destino(destino)
+                .origenDestino(destino == null ? null : (delClub != null ? "sede" : "variable"))
+                .activo(emailSender.configurado() && destino != null)
+                .build();
+    }
+
+    /**
+     * Mail de prueba. Va sincrónico y deja subir el error: el club aprieta el botón para
+     * confirmar que los avisos llegan, y un "enviado" que en realidad falló sería peor que
+     * no tener el botón.
+     */
+    @Transactional(readOnly = true)
+    public String enviarPrueba() {
+        if (!emailSender.configurado()) {
+            throw new EstadoInvalidoException(
+                    "No hay un servidor de correo configurado en el servidor. "
+                            + "Hasta que se cargue, los avisos no salen.");
+        }
+        String destino = destino();
+        if (destino == null) {
+            throw new EstadoInvalidoException(
+                    "Cargá el mail del club en Configuración de sede para recibir los avisos.");
+        }
+        try {
+            emailSender.enviarAhora(destino, "Prueba de avisos del sistema", """
+                    Los avisos por mail están funcionando.
+
+                    A esta casilla van a llegar:
+                      · las solicitudes de turno nuevas
+                      · las inscripciones a torneos
+                      · los turnos fijos que no se pudieron agendar
+                      · las señas cobradas por turnos que ya no estaban disponibles
+
+                    Si recibiste este mensaje, no hay nada más que configurar.
+                    """);
+        } catch (RuntimeException e) {
+            throw new EstadoInvalidoException("No se pudo enviar el mail: " + e.getMessage());
+        }
+        return destino;
+    }
+
+    private String emailDelClub() {
+        String email = configuracionSedeRepository.findById(1L)
+                .map(ConfiguracionSede::getEmail)
+                .orElse(null);
+        return email != null && !email.isBlank() ? email.trim() : null;
+    }
+
+    private String porDefecto() {
+        return destinoPorDefecto != null && !destinoPorDefecto.isBlank() ? destinoPorDefecto.trim() : null;
+    }
+
     private String nombreCancha(Reserva reserva) {
         return reserva.getCancha() != null ? reserva.getCancha().getNombre() : "-";
     }
@@ -169,12 +230,7 @@ public class NotificacionService {
         if (!emailSender.configurado()) {
             return null;
         }
-        String delClub = configuracionSedeRepository.findById(1L)
-                .map(ConfiguracionSede::getEmail)
-                .orElse(null);
-        if (delClub != null && !delClub.isBlank()) {
-            return delClub.trim();
-        }
-        return destinoPorDefecto != null && !destinoPorDefecto.isBlank() ? destinoPorDefecto.trim() : null;
+        String delClub = emailDelClub();
+        return delClub != null ? delClub : porDefecto();
     }
 }

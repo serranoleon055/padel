@@ -26,6 +26,6 @@ public class HorarioCanchaRequest {
     private LocalTime horaCierre;
 
     private String diasActivos;
-    private Integer duracionSlotMin;
+    private String duracionesOfrecidas;
     private Integer anticipacionDias;
 }

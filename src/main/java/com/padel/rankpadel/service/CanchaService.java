@@ -13,6 +13,7 @@ import com.padel.rankpadel.entity.Lugar;
 import com.padel.rankpadel.exception.ResourceNotFoundException;
 import com.padel.rankpadel.repository.CanchaRepository;
 import com.padel.rankpadel.repository.LugarRepository;
+import com.padel.rankpadel.util.OrdenCanchas;
 
 import lombok.RequiredArgsConstructor;
 
@@ -26,13 +27,17 @@ public class CanchaService {
     @Transactional(readOnly = true)
     public List<CanchaResponse> listarTodas() {
         return canchaRepository.findByActivoTrue()
-                .stream().map(this::toResponse).collect(Collectors.toList());
+                .stream().map(this::toResponse)
+                .sorted(OrdenCanchas.porNombre(CanchaResponse::getNombre))
+                .collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)
     public List<CanchaResponse> listarPorLugar(Long lugarId) {
         return canchaRepository.findByLugarIdAndActivoTrue(lugarId)
-                .stream().map(this::toResponse).collect(Collectors.toList());
+                .stream().map(this::toResponse)
+                .sorted(OrdenCanchas.porNombre(CanchaResponse::getNombre))
+                .collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)

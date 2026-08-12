@@ -2,10 +2,8 @@ package com.padel.rankpadel.dto.request;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
-import java.util.List;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -26,8 +24,11 @@ public class LoteReservaRequest {
     @NotNull
     private LocalDate fecha;
 
-    @NotEmpty
-    private List<LocalTime> horarios;
+    @NotNull
+    private LocalTime horaInicio;
+
+    /** Minutos del turno. Null = la duración más corta que vende el club. */
+    private Integer duracionMin;
 
     @NotBlank
     private String clienteNombre;

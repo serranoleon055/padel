@@ -26,9 +26,13 @@ public class GastoService {
     private static final Logger log = LoggerFactory.getLogger(GastoService.class);
 
     private final GastoRepository gastoRepository;
+    private final CajaCerradaGuard cajaCerradaGuard;
 
     @Transactional
     public GastoResponse registrar(GastoRequest request) {
+        // El egreso pesa en el día de su fecha, no en el de carga: cargar una factura de
+        // ayer cambiaría un arqueo ya firmado.
+        cajaCerradaGuard.exigirDiaAbierto(request.getFecha());
         Gasto gasto = gastoRepository.save(Gasto.builder()
                 .fecha(request.getFecha())
                 .categoria(request.getCategoria())
@@ -46,6 +50,10 @@ public class GastoService {
     @Transactional
     public GastoResponse actualizar(Long id, GastoRequest request) {
         Gasto gasto = buscar(id);
+        // Las dos fechas: de la que sale y a la que va. Mover un gasto a un día cerrado
+        // descuadraría ese arqueo igual que sacarlo de uno.
+        cajaCerradaGuard.exigirDiaAbierto(gasto.getFecha());
+        cajaCerradaGuard.exigirDiaAbierto(request.getFecha());
         gasto.setFecha(request.getFecha());
         gasto.setCategoria(request.getCategoria());
         gasto.setDescripcion(request.getDescripcion().trim());
@@ -61,6 +69,7 @@ public class GastoService {
     @Transactional
     public void eliminar(Long id) {
         Gasto gasto = buscar(id);
+        cajaCerradaGuard.exigirDiaAbierto(gasto.getFecha());
         log.info("[caja] {} eliminó el gasto {} de ${} ({} - {})",
                 usuarioActual(), id, gasto.getMonto(), gasto.getCategoria(), gasto.getDescripcion());
         gastoRepository.delete(gasto);

@@ -36,7 +36,15 @@ public class HorarioCancha {
     private LocalTime horaApertura;
     private LocalTime horaCierre;
     private String diasActivos;
-    private int duracionSlotMin;
+
+    /**
+     * Duraciones que el club vende, en minutos, separadas por coma (ej. "60,90,120").
+     * Sumar una duración agrega una opción de venta, no horarios nuevos: los turnos
+     * arrancan siempre en hora en punto, incluso los de 90 minutos.
+     */
+    @Builder.Default
+    private String duracionesOfrecidas = "60,120";
+
     private int anticipacionDias;
 
     @Builder.Default

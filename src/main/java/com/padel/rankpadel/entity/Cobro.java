@@ -54,4 +54,17 @@ public class Cobro {
     private String registradoPor;
 
     private String notas;
+
+    /**
+     * Anulación. Es baja lógica y no borrado: la fila sale de todos los totales pero
+     * queda, porque un movimiento de plata que desaparece sin rastro deja el cierre de un
+     * día pasado cambiando solo y sin nadie a quien preguntarle.
+     */
+    private LocalDateTime anuladoEn;
+    private String anuladoPor;
+    private String motivoAnulacion;
+
+    public boolean estaAnulado() {
+        return anuladoEn != null;
+    }
 }
