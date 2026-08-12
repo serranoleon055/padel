@@ -30,42 +30,217 @@ no comparte base con ningún club real.
 | Visitas | **Cloudflare Web Analytics** | Gratis | Sin cookies → no hace falta cartel de consentimiento |
 | Despertador | **UptimeRobot** | Gratis | Un chequeo cada 5 min a `/actuator/health` |
 
-### Orden de armado
+### El orden importa (hay una dependencia circular)
 
-1. **Base (Aiven).** Crear un servicio MySQL free. De la pantalla de conexión salen host,
-   puerto, usuario, contraseña y nombre de la base. Aiven **exige TLS**, así que la URL va
-   con SSL y con el huso horario fijado (si no, las fechas se corren):
+El backend necesita la URL del front (para el CORS) y el front necesita la URL del backend
+(para pegarle a la API). Ninguno de los dos existe antes de crearse. La salida es:
+
+```
+Cloudinary → Aiven → Render (con el CORS provisorio) → Pages → volver a Render y corregir el CORS
+```
+
+Saltear el último paso es el error clásico: el sitio carga, pero **cualquier pantalla que
+pida datos queda vacía** y en la consola del navegador aparece un error de CORS.
+
+---
+
+### Paso 0 — Cloudinary (2 minutos, va primero)
+
+Sin esto, las fotos que se suban (logos de sponsors, galería de la sede, fotos de
+jugadores) se guardan en el disco del contenedor, y el plan gratuito de Render **no tiene
+disco persistente**: se borran en cada deploy y cada vez que el servicio se duerme.
+
+1. Entrar a [cloudinary.com](https://cloudinary.com) → **Console**.
+2. En la barra lateral: **Settings** (el engranaje) → **API Keys**.
+   En consolas más viejas está en la pantalla de inicio, en la tarjeta
+   **Product Environment Credentials** / **Account Details**.
+3. Anotar tres valores:
+   - **Cloud name** → `CLOUDINARY_CLOUD_NAME`
+   - **API Key** → `CLOUDINARY_API_KEY`
+   - **API Secret** (hay que tocar "mostrar"; solo lo ve un usuario con rol Admin) →
+     `CLOUDINARY_API_SECRET`
+
+---
+
+### Paso 1 — La base (Aiven, MySQL gratis)
+
+1. [console.aiven.io](https://console.aiven.io) → dentro del proyecto, barra lateral
+   **Services** → botón **Create service**.
+2. Elegir **MySQL**.
+3. **Service tier**: el gratuito (*Free*). Ojo: el tier gratis **limita las regiones y los
+   proveedores** disponibles, así que elegilo ANTES que el cloud, o no vas a ver el plan
+   free en la lista.
+4. **Cloud provider** y región: la que ofrezca el free (suele ser una sola).
+5. **Plan**: el free (1 GB de datos, 1 GB de RAM).
+6. **Service details** → nombre: `rankpadel-demo`.
+7. **Create service**. Queda en estado **Rebuilding** unos minutos; hay que esperar a
+   **Running**.
+8. Ya en **Running**: pantalla **Overview** del servicio → botón **Quick connect**. Ahí
+   salen **Host**, **Port**, **User**, **Password** y **Database name** (en Aiven la base
+   por defecto se llama `defaultdb`).
+
+Con eso se arma la URL de conexión. **Aiven exige TLS** y el huso horario hay que fijarlo
+o las fechas se corren un día:
+
+```
+jdbc:mysql://HOST:PUERTO/defaultdb?sslMode=REQUIRED&serverTimezone=America/Argentina/Buenos_Aires&characterEncoding=UTF-8
+```
+
+No hay que crear ninguna tabla ni correr ningún SQL: **Flyway arma el esquema solo** en el
+primer arranque del backend (las 54 migraciones).
+
+> **Si Aiven no deja crear la cuenta**: probar con otro mail (sirve `tumail+demo@gmail.com`)
+> o en una ventana de incógnito. Si igual falla, la alternativa es TiDB Cloud Serverless,
+> que habla el protocolo de MySQL — pero antes hay que correr las 54 migraciones contra él
+> y confirmar que pasan: es *compatible* con MySQL, no *es* MySQL.
+
+---
+
+### Paso 2 — El backend (Render)
+
+1. [dashboard.render.com](https://dashboard.render.com) → botón **New** (arriba a la
+   derecha) → **Blueprint**.
+2. En la lista de repos, **Connect** en `serranoleon055/padel`. Si no aparece, hay que
+   darle permiso a Render sobre el repo desde GitHub.
+3. **Blueprint name**: `rankpadel-demo`. **Branch**: `main`.
+   El campo **Blueprint Path** se deja como está: el `render.yaml` ya está en la raíz.
+4. Render lee el archivo y muestra los cambios que va a aplicar, con un formulario para
+   las variables marcadas `sync: false`. Cargar ahí (o después, ver punto 6):
+
+   | Variable | Valor |
+   |---|---|
+   | `DB_URL` | la URL JDBC del paso 1, entera |
+   | `DB_USERNAME` | el **User** de Aiven (suele ser `avnadmin`) |
+   | `DB_PASSWORD` | el **Password** de Aiven |
+   | `ADMIN_INITIAL_PASSWORD` | la que quieras, **mínimo 10 caracteres** |
+   | `APP_CORS_ALLOWED_ORIGINS` | provisorio: `https://rankpadel-demo.pages.dev` |
+   | `CLOUDINARY_CLOUD_NAME` / `_API_KEY` / `_API_SECRET` | los del paso 0 |
+
+   `JWT_SECRET` **no se toca**: el blueprint le pone `generateValue: true` y Render genera
+   uno fuerte solo.
+
+5. **Deploy Blueprint**. El primer build tarda bastante (compila el proyecto con Maven
+   adentro de Docker). Se sigue en la pestaña **Logs** del servicio.
+6. Si algo quedó sin cargar: servicio `rankpadel-demo` → barra lateral **Environment** →
+   **Add environment variable** → **Save changes** (guardar dispara un redeploy solo).
+7. Cuando termine, arriba del servicio aparece la URL: `https://rankpadel-demo.onrender.com`.
+   **Anotarla.** Probarla entrando a `https://rankpadel-demo.onrender.com/actuator/health`:
+   tiene que responder `{"status":"UP"}`.
+
+**Qué mirar si no arranca** (pestaña Logs):
+
+- `SecretsGuard` abortando → falta una variable o el JWT es de desarrollo.
+- `ADMIN_INITIAL_PASSWORD es obligatoria en producción` → no la cargaste, o tiene menos de
+  10 caracteres. Es a propósito: sin eso el admin quedaría con la contraseña de desarrollo.
+- Error de conexión a la base → revisar que la URL tenga `sslMode=REQUIRED`.
+- El contenedor muere apenas arranca → problema de memoria. El `Dockerfile` ya calcula el
+  heap como porcentaje de la RAM justamente por los 512 MB del plan free.
+
+El blueprint deja fijas `PAGOS_MODO_DEMO=true` y `PAGOS_DEMO_PUBLICA=true`. **Las dos hacen
+falta**: con la primera sola, `SecretsGuard` aborta a propósito. En modo demo los pagos se
+aprueban solos, y eso contra la base de un cliente real sería regalar turnos.
+
+---
+
+### Paso 3 — El frontend (Cloudflare Pages)
+
+1. [dash.cloudflare.com](https://dash.cloudflare.com) → barra lateral **Workers & Pages**.
+2. **Create application** → pestaña **Pages** → **Connect to Git**.
+3. Autorizar GitHub → elegir `serranoleon055/padel-front` → **Install & Authorize** →
+   **Begin setup**.
+4. Configuración:
+
+   | Campo | Valor |
+   |---|---|
+   | **Project name** | `rankpadel-demo` (define el dominio `rankpadel-demo.pages.dev`) |
+   | **Production branch** | `main` |
+   | **Framework preset** | `Vite` |
+   | **Build command** | `npm run build` |
+   | **Build output directory** | `dist` |
+   | **Root directory** | se deja vacío |
+
+5. Desplegar **Environment variables (advanced)** y agregar:
+   `VITE_API_BASE_URL` = `https://rankpadel-demo.onrender.com` (**sin barra al final**).
+   Es de build, no de runtime: si se cambia después hay que volver a desplegar.
+6. **Save and Deploy**.
+
+Los archivos `public/_headers` (CSP y headers de seguridad) y `public/_redirects` (para que
+los enlaces profundos del SPA no den 404) ya están en el repo: Pages los toma solo.
+
+---
+
+### Paso 4 — Cerrar el círculo del CORS
+
+Con el dominio real de Pages a la vista, volver a **Render** → `rankpadel-demo` →
+**Environment** → editar `APP_CORS_ALLOWED_ORIGINS` con la URL exacta que quedó
+(`https://rankpadel-demo.pages.dev`, **sin barra final**) → **Save changes**.
+
+Se verifica entrando al sitio y abriendo cualquier pantalla con datos (Ranking o Turnos).
+Si sigue vacía, mirar la consola del navegador: un error que diga *CORS policy* significa
+que la URL cargada no coincide **exactamente** con la del navegador (ojo con `http` vs
+`https` y con la barra final).
+
+---
+
+### Paso 5 — El contador de visitas
+
+1. Cloudflare → **Workers & Pages** → el proyecto `rankpadel-demo`.
+2. Pestaña **Metrics** → en el bloque **Web Analytics**, botón **Enable**.
+3. El beacon se instala solo **en el deploy siguiente**: hay que volver a desplegar
+   (**Deployments** → menú del último deploy → **Retry deployment**) o esperar al próximo
+   push.
+
+Las visitas se leen después en Cloudflare → **Web Analytics**.
+
+**Si marca cero visitas**, en orden:
+
+1. Que `static.cloudflareinsights.com` siga en el `script-src` del `_headers`. Si el
+   navegador lo bloquea por CSP, no se cuenta nada y no salta ningún error visible.
+2. Que el sitio no mande `Cache-Control: public, no-transform` — con ese header Cloudflare
+   no puede inyectar el script. Hoy no lo mandamos.
+3. Que hayas vuelto a desplegar después de activarlo.
+
+---
+
+### Paso 6 — El despertador
+
+El plan gratuito de Render duerme el servicio a los **15 minutos sin tráfico** y tarda
+cerca de **un minuto** en despertar. Eso, con un cliente mirando el celular, no sirve.
+
+1. [uptimerobot.com](https://uptimerobot.com) → crear un monitor nuevo.
+2. Tipo **HTTP(s)**.
+3. URL: `https://rankpadel-demo.onrender.com/actuator/health`
+4. Intervalo: **5 minutos**.
+5. Contacto de alerta: tu mail.
+
+> **Solo una demo por cuenta de Render.** El plan free da 750 horas de instancia por mes y
+> un servicio despierto todo el mes consume 730. Si levantás una segunda, las dos se
+> suspenden antes de fin de mes.
+
+---
+
+### Paso 7 — Cargar los datos
+
+1. Entrar a `https://rankpadel-demo.pages.dev/admin` con `admin` y la
+   `ADMIN_INITIAL_PASSWORD` del paso 2.
+2. Crear la sede y las canchas (**Sedes y canchas**) y, en cada cancha, el **horario de
+   atención** (Configuración de sede). Sin horario cargado el sembrador no encuentra
+   ningún hueco y no siembra nada.
+3. Desde la máquina de desarrollo:
 
    ```
-   jdbc:mysql://HOST:PUERTO/defaultdb?sslMode=REQUIRED&serverTimezone=America/Argentina/Buenos_Aires&characterEncoding=UTF-8
+   .\scripts\sembrar-demo.ps1 -Api "https://rankpadel-demo.onrender.com" -Clave "TU-PASSWORD"
    ```
 
-   No hay que crear ninguna tabla: **Flyway arma el esquema solo** en el primer arranque.
+4. Revisar Panel, Caja y Estadísticas: tienen que verse cargados.
 
-2. **Backend (Render).** `New` → `Blueprint` apuntando al repo: toma el `render.yaml` que
-   está en la raíz. Después, en Environment, cargar los valores marcados `sync:false`:
-   `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `ADMIN_INITIAL_PASSWORD`,
-   `APP_CORS_ALLOWED_ORIGINS` (la URL del front, sin barra final) y las tres de Cloudinary.
-   `JWT_SECRET` lo genera Render solo.
+### Paso 8 — Actualizar la URL en los dos lugares que quedan
 
-   El blueprint ya deja puestas `PAGOS_MODO_DEMO=true` y `PAGOS_DEMO_PUBLICA=true`. **Las
-   dos hacen falta**: con la primera sola, `SecretsGuard` aborta el arranque a propósito
-   (aprobar pagos solos contra una base remota, en un cliente real, sería regalar turnos).
+La URL vieja de la demo está escrita en:
 
-3. **Frontend (Cloudflare Pages).** Conectar el repo del front. Build `npm run build`,
-   salida `dist`, variable `VITE_API_BASE_URL` = la URL de Render. Los archivos `_headers`
-   (CSP) y `_redirects` (deep links del SPA) ya están en `public/`.
-
-4. **Visitas.** En Cloudflare → Web Analytics → habilitarlo para el sitio de Pages. El
-   beacon lo inyecta Pages solo; el CSP de `_headers` ya lo permite. Si alguna vez las
-   visitas dan cero, lo primero a mirar es que `static.cloudflareinsights.com` siga en el
-   `script-src`.
-
-5. **Despertador.** UptimeRobot → monitor HTTP(s) a `https://TU-BACKEND.onrender.com/actuator/health`
-   cada 5 minutos. Sin esto, la primera visita del día espera un minuto en blanco, que es
-   exactamente lo que no puede pasar cuando el cliente entra desde el celular. 750 h/mes
-   alcanzan justo para un servicio despierto todo el mes (730 h), pero **solo uno**: si se
-   levanta una segunda demo en la misma cuenta, las dos se suspenden a fin de mes.
+- `index.html` del front: `og:url` y `og:image` (es lo que se ve al compartir el enlace por
+  WhatsApp).
+- `Propuesta-fuente.html`, última página — y después **regenerar el PDF**.
 
 ### Lo que hay que saber de esta demo
 
