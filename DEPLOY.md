@@ -144,6 +144,8 @@ aprueban solos, y eso contra la base de un cliente real sería regalar turnos.
 
 ### Paso 3 — El frontend (Cloudflare Pages)
 
+**Intentar primero con Git** (lo normal). Si funciona, listo:
+
 1. [dash.cloudflare.com](https://dash.cloudflare.com) → barra lateral **Workers & Pages**.
 2. **Create application** → pestaña **Pages** → **Connect to Git**.
 3. Autorizar GitHub → elegir `serranoleon055/padel-front` → **Install & Authorize** →
@@ -152,7 +154,7 @@ aprueban solos, y eso contra la base de un cliente real sería regalar turnos.
 
    | Campo | Valor |
    |---|---|
-   | **Project name** | `rankpadel-demo` (define el dominio `rankpadel-demo.pages.dev`) |
+   | **Project name** | el que sea (define el dominio `<nombre>.pages.dev`) |
    | **Production branch** | `main` |
    | **Framework preset** | `Vite` |
    | **Build command** | `npm run build` |
@@ -160,12 +162,27 @@ aprueban solos, y eso contra la base de un cliente real sería regalar turnos.
    | **Root directory** | se deja vacío |
 
 5. Desplegar **Environment variables (advanced)** y agregar:
-   `VITE_API_BASE_URL` = `https://rankpadel-demo.onrender.com` (**sin barra al final**).
+   `VITE_API_BASE_URL` = la URL del backend de Render (**sin barra al final**).
    Es de build, no de runtime: si se cambia después hay que volver a desplegar.
 6. **Save and Deploy**.
 
 Los archivos `public/_headers` (CSP y headers de seguridad) y `public/_redirects` (para que
 los enlaces profundos del SPA no den 404) ya están en el repo: Pages los toma solo.
+
+> **Si el build de Cloudflare se cuelga o falla sin motivo claro** (visto en vivo el
+> 2026-08-12: el log se corta en seco justo después de `Executing user build command`, dos
+> veces seguidas, mismo punto exacto — no es un error de TypeScript ni de dependencias, se
+> descartó clonando el repo limpio y corriendo el mismo build local, que compiló sin
+> problema): no perder tiempo reintentando desde el dashboard. Subir el build a mano:
+>
+> 1. Local: `npm ci && VITE_API_BASE_URL=https://TU-BACKEND.onrender.com npm run build`
+>    (en PowerShell: `$env:VITE_API_BASE_URL="..."; npm run build`).
+> 2. Cloudflare → **Workers & Pages** → **Create application** → **Pages** →
+>    pestaña **Upload assets** → arrastrar la carpeta `dist/`.
+> 3. Cada cambio futuro del front repite estos dos pasos — no hay redeploy automático
+>    en este modo. Si se retoma el Git deploy más adelante, el primer sospechoso a
+>    revisar es el caché de build de Cloudflare (Settings → Builds → borrar caché):
+>    persiste `node_modules`/artefactos entre corridas y es candidato a la causa.
 
 ---
 
@@ -179,6 +196,12 @@ Se verifica entrando al sitio y abriendo cualquier pantalla con datos (Ranking o
 Si sigue vacía, mirar la consola del navegador: un error que diga *CORS policy* significa
 que la URL cargada no coincide **exactamente** con la del navegador (ojo con `http` vs
 `https` y con la barra final).
+
+> **Guardar una env var en Render dispara un redeploy**, y durante esos minutos el backend
+> devuelve **502**. El navegador lo reporta como error de CORS (sin respuesta, tampoco hay
+> cabecera `Access-Control-Allow-Origin`), lo que confunde: parece que el CORS sigue mal
+> cuando en realidad el servicio está reiniciando. Esperar a que `/actuator/health` vuelva
+> a responder `{"status":"UP"}` antes de tocar nada más.
 
 ---
 
