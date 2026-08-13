@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.padel.rankpadel.dto.request.GastoRequest;
 import com.padel.rankpadel.dto.response.GastoResponse;
 import com.padel.rankpadel.entity.Gasto;
+import com.padel.rankpadel.exception.EstadoInvalidoException;
 import com.padel.rankpadel.exception.ResourceNotFoundException;
 import com.padel.rankpadel.repository.GastoRepository;
 
@@ -28,8 +29,20 @@ public class GastoService {
     private final GastoRepository gastoRepository;
     private final CajaCerradaGuard cajaCerradaGuard;
 
+    /**
+     * Un gasto es plata que ya salió: no puede tener fecha futura. Sin este control, un
+     * error de tipeo en el año (2027 por 2026) se guardaba sin chistar y quedaba
+     * escondido en un mes que todavía no llegó, ensuciando el resultado de ese mes.
+     */
+    private void exigirFechaNoFutura(LocalDate fecha) {
+        if (fecha != null && fecha.isAfter(LocalDate.now())) {
+            throw new EstadoInvalidoException("La fecha del gasto no puede ser futura.");
+        }
+    }
+
     @Transactional
     public GastoResponse registrar(GastoRequest request) {
+        exigirFechaNoFutura(request.getFecha());
         // El egreso pesa en el día de su fecha, no en el de carga: cargar una factura de
         // ayer cambiaría un arqueo ya firmado.
         cajaCerradaGuard.exigirDiaAbierto(request.getFecha());
@@ -52,6 +65,7 @@ public class GastoService {
         Gasto gasto = buscar(id);
         // Las dos fechas: de la que sale y a la que va. Mover un gasto a un día cerrado
         // descuadraría ese arqueo igual que sacarlo de uno.
+        exigirFechaNoFutura(request.getFecha());
         cajaCerradaGuard.exigirDiaAbierto(gasto.getFecha());
         cajaCerradaGuard.exigirDiaAbierto(request.getFecha());
         gasto.setFecha(request.getFecha());
