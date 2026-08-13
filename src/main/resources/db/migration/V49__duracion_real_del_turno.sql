@@ -26,7 +26,19 @@ SET duracion_min = CASE
 --    misma cancha y día, con el mismo estado, el mismo pago y el mismo abono, eran un
 --    solo turno partido en pedazos. Se conserva la primera y absorbe a las demás.
 -- ---------------------------------------------------------------------------
-CREATE TEMPORARY TABLE tmp_lotes AS
+-- Las temporales van con CREATE + INSERT y no con `AS SELECT`: esa forma arma la tabla
+-- sin clave primaria, y un MySQL gestionado con replicación (Aiven) la rechaza. `isla`
+-- es única por construcción (se agrupa por ella), así que sirve de clave.
+CREATE TEMPORARY TABLE tmp_lotes (
+    isla BIGINT NOT NULL PRIMARY KEY,
+    id_sobreviviente BIGINT NOT NULL,
+    duracion_total INT NOT NULL,
+    precio_total DECIMAL(12,2) NULL,
+    piezas INT NOT NULL,
+    hora_fin_final VARCHAR(20) NULL
+);
+
+INSERT INTO tmp_lotes (isla, id_sobreviviente, duracion_total, precio_total, piezas, hora_fin_final)
 WITH marcado AS (
     SELECT
         id, cancha_id, fecha, cliente_telefono, estado, hora_inicio, hora_fin,
@@ -60,7 +72,17 @@ FROM islas
 GROUP BY isla
 HAVING COUNT(*) > 1;
 
-CREATE TEMPORARY TABLE tmp_absorbidas AS
+-- Clave surrogate a propósito: `id_absorbida` es lo natural, pero si una reserva llegara
+-- a matchear dos lotes la clave saltaría y rompería la migración. Duplicar una fila acá
+-- es inofensivo (después solo se usa para un UPDATE y un DELETE por id), quedarse sin
+-- migrar no.
+CREATE TEMPORARY TABLE tmp_absorbidas (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    id_absorbida BIGINT NOT NULL,
+    id_sobreviviente BIGINT NOT NULL
+);
+
+INSERT INTO tmp_absorbidas (id_absorbida, id_sobreviviente)
 SELECT r.id AS id_absorbida, l.id_sobreviviente
 FROM reservas r
 JOIN tmp_lotes l ON r.id > l.id_sobreviviente

@@ -34,8 +34,10 @@ ALTER TABLE jugadores ADD CONSTRAINT fk_jugador_cliente
 -- Forma canónica del teléfono, paso a paso (equivalente a NormalizadorTelefono):
 --   1. solo dígitos   2. sacar 54   3. sacar 9   4. sacar 0
 --   5. si quedó de más de 10 dígitos, sacar el 15 posterior al código de área
+-- La clave primaria no se usa para nada acá, pero un MySQL gestionado con replicación
+-- (Aiven, por defecto) rechaza crear cualquier tabla sin ella, temporal incluida.
 CREATE TEMPORARY TABLE tmp_clientes_reserva (
-    reserva_id BIGINT NOT NULL,
+    reserva_id BIGINT NOT NULL PRIMARY KEY,
     cliente_nombre VARCHAR(120) NOT NULL,
     cliente_telefono VARCHAR(40) NOT NULL,
     tel_normalizado VARCHAR(20) COLLATE utf8mb4_unicode_ci NULL
@@ -85,7 +87,7 @@ DROP TEMPORARY TABLE tmp_clientes_reserva;
 
 -- Los jugadores con teléfono cargado que coincidan con un cliente quedan enlazados.
 CREATE TEMPORARY TABLE tmp_clientes_jugador (
-    jugador_id BIGINT NOT NULL,
+    jugador_id BIGINT NOT NULL PRIMARY KEY,
     tel_normalizado VARCHAR(20) COLLATE utf8mb4_unicode_ci NULL
 );
 

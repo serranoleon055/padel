@@ -20,8 +20,10 @@ CREATE INDEX idx_turno_fijo_cliente ON turnos_fijos (cliente_id);
 --
 -- El collation va explícito por lo mismo que en V43: sin él, comparar contra
 -- clientes.telefono_normalizado tira "Illegal mix of collations".
+-- Con clave primaria: un MySQL gestionado con replicación no deja crear tablas sin ella,
+-- ni siquiera temporales (mismo motivo que en V43).
 CREATE TEMPORARY TABLE tmp_clientes_turno_fijo (
-    turno_fijo_id BIGINT NOT NULL,
+    turno_fijo_id BIGINT NOT NULL PRIMARY KEY,
     tel_normalizado VARCHAR(20) COLLATE utf8mb4_unicode_ci NULL
 );
 
