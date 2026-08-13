@@ -132,7 +132,7 @@ public class CampeonService {
                 .parejaCampeona(campeona)
                 .parejaSubcampeona(subcampeona)
                 .marcadorFinal(finalPartido.getMarcador())
-                .fechaCoronacion(finalPartido.getFechaHora() != null ? finalPartido.getFechaHora() : LocalDateTime.now())
+                .fechaCoronacion(fechaDelTorneo(torneo))
                 .build();
     }
 
@@ -158,8 +158,20 @@ public class CampeonService {
                 .parejaCampeona(campeona)
                 .parejaSubcampeona(subcampeona)
                 .marcadorFinal(null)
-                .fechaCoronacion(LocalDateTime.now())
+                .fechaCoronacion(fechaDelTorneo(torneo))
                 .build();
+    }
+
+    /**
+     * Fecha que se muestra como "cuándo se coronó" en el salón de campeones: la del
+     * torneo, no la del momento en que alguien tipeó el resultado. Antes usaba
+     * {@code Partido.fechaHora}, que ResultadoService pisa con {@code now()} al cargar
+     * el marcador — si el resultado se corrige meses después, la fecha del título
+     * saltaba con él, y un torneo de enero terminaba figurando en agosto.
+     */
+    private LocalDateTime fechaDelTorneo(Torneo torneo) {
+        java.time.LocalDate fecha = torneo.getFechaFin() != null ? torneo.getFechaFin() : torneo.getFechaInicio();
+        return fecha != null ? fecha.atStartOfDay() : LocalDateTime.now();
     }
 
     private CampeonResponse mapear(CampeonTorneo campeon) {
