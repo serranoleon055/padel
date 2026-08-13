@@ -47,6 +47,20 @@ public class ProductoService {
     private final MovimientoStockRepository movimientoStockRepository;
     private final GastoRepository gastoRepository;
 
+    /**
+     * Dos productos con el mismo nombre confunden la venta (¿cuál de los dos?) y
+     * ensucian "lo que más deja" del informe, que agrupa por producto y termina
+     * mostrando la misma fila dos veces. {@code idAExcluir} es el propio producto al
+     * editar: no puede chocar contra su propio nombre.
+     */
+    private void exigirNombreLibre(String nombre, Long idAExcluir) {
+        productoRepository.findByNombreIgnoreCase(nombre)
+                .filter(existente -> !existente.getId().equals(idAExcluir))
+                .ifPresent(existente -> {
+                    throw new EstadoInvalidoException("Ya hay un producto llamado \"" + existente.getNombre() + "\".");
+                });
+    }
+
     @Transactional(readOnly = true)
     public List<ProductoResponse> listar(String busqueda, boolean soloActivos) {
         String texto = busqueda != null && !busqueda.isBlank() ? busqueda.trim() : null;
@@ -60,8 +74,10 @@ public class ProductoService {
 
     @Transactional
     public ProductoResponse crear(ProductoRequest request) {
+        String nombre = request.getNombre().trim();
+        exigirNombreLibre(nombre, null);
         Producto producto = Producto.builder()
-                .nombre(request.getNombre().trim())
+                .nombre(nombre)
                 .categoria(request.getCategoria())
                 .precioVenta(request.getPrecioVenta())
                 .costo(request.getCosto())
@@ -87,7 +103,9 @@ public class ProductoService {
     @Transactional
     public ProductoResponse actualizar(Long id, ProductoRequest request) {
         Producto producto = buscar(id);
-        producto.setNombre(request.getNombre().trim());
+        String nombre = request.getNombre().trim();
+        exigirNombreLibre(nombre, id);
+        producto.setNombre(nombre);
         producto.setCategoria(request.getCategoria());
         producto.setPrecioVenta(request.getPrecioVenta());
         producto.setCosto(request.getCosto());

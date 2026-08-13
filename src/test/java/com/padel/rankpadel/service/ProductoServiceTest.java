@@ -21,6 +21,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.padel.rankpadel.dto.request.MovimientoStockRequest;
+import com.padel.rankpadel.dto.request.ProductoRequest;
 import com.padel.rankpadel.dto.response.ProductoResponse;
 import com.padel.rankpadel.entity.Gasto;
 import com.padel.rankpadel.entity.MovimientoStock;
@@ -191,6 +192,65 @@ class ProductoServiceTest {
                     .isInstanceOf(EstadoInvalidoException.class)
                     .hasMessageContaining("quedan 3");
             verify(movimientoStockRepository, never()).save(any());
+        }
+    }
+
+    @Nested
+    @DisplayName("Nombre único")
+    class NombreUnico {
+
+        private ProductoRequest request(String nombre) {
+            ProductoRequest request = new ProductoRequest();
+            request.setNombre(nombre);
+            request.setCategoria(CategoriaProducto.PELOTAS);
+            request.setPrecioVenta(new BigDecimal("10000"));
+            return request;
+        }
+
+        @Test
+        @DisplayName("No se puede crear un producto con un nombre que ya existe, sin importar mayúsculas ni espacios")
+        void crear_nombreRepetido_rechaza() {
+            when(productoRepository.findByNombreIgnoreCase("Tubo de pelotas"))
+                    .thenReturn(Optional.of(pelotas(5)));
+
+            assertThatThrownBy(() -> productoService.crear(request(" Tubo de pelotas ")))
+                    .isInstanceOf(EstadoInvalidoException.class)
+                    .hasMessageContaining("Ya hay un producto llamado");
+        }
+
+        @Test
+        @DisplayName("Un nombre nuevo se puede crear sin problema")
+        void crear_nombreLibre_permite() {
+            when(productoRepository.findByNombreIgnoreCase("Grip")).thenReturn(Optional.empty());
+
+            productoService.crear(request("Grip"));
+
+            verify(productoRepository).save(any());
+        }
+
+        @Test
+        @DisplayName("Al editar, el producto no choca contra su propio nombre")
+        void actualizar_mismoNombre_noChoca() {
+            Producto producto = pelotas(5);
+            when(productoRepository.findById(1L)).thenReturn(Optional.of(producto));
+            when(productoRepository.findByNombreIgnoreCase("Pelotas Head")).thenReturn(Optional.of(producto));
+
+            productoService.actualizar(1L, request("Pelotas Head"));
+
+            assertThat(producto.getNombre()).isEqualTo("Pelotas Head");
+        }
+
+        @Test
+        @DisplayName("Al editar, sí choca contra el nombre de OTRO producto")
+        void actualizar_nombreDeOtroProducto_rechaza() {
+            Producto propio = pelotas(5);
+            Producto otro = Producto.builder().id(2L).nombre("Grip").build();
+            when(productoRepository.findById(1L)).thenReturn(Optional.of(propio));
+            when(productoRepository.findByNombreIgnoreCase("Grip")).thenReturn(Optional.of(otro));
+
+            assertThatThrownBy(() -> productoService.actualizar(1L, request("Grip")))
+                    .isInstanceOf(EstadoInvalidoException.class)
+                    .hasMessageContaining("Ya hay un producto llamado");
         }
     }
 

@@ -33,4 +33,7 @@ public interface ProductoRepository extends JpaRepository<Producto, Long> {
     List<Producto> conStockBajo();
 
     long countByProveedorIdAndActivoTrue(Long proveedorId);
+
+    /** Para chequear nombre repetido sin importar mayúsculas ni espacios de más. */
+    java.util.Optional<Producto> findByNombreIgnoreCase(String nombre);
 }
