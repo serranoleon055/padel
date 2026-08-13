@@ -13,5 +13,10 @@ ALTER TABLE promociones_cancha ADD COLUMN vigente_desde DATE NULL;
 ALTER TABLE promociones_cancha ADD COLUMN vigente_hasta DATE NULL;
 
 -- El listado público y la resolución de precio filtran por vigencia además de por cancha.
-DROP INDEX idx_tarifa_cancha ON promociones_cancha;
+--
+-- El índice nuevo se crea ANTES de borrar el viejo, y el orden importa: `idx_tarifa_cancha`
+-- es el único índice que cubre la clave foránea `fk_tarifa_cancha`, y MySQL no deja borrar
+-- el último índice que sostiene una FK. Creando primero el reemplazo —que también arranca
+-- por cancha_id— la FK nunca se queda sin índice y el borrado pasa siempre.
 CREATE INDEX idx_promocion_cancha ON promociones_cancha (cancha_id, activo, vigente_hasta);
+DROP INDEX idx_tarifa_cancha ON promociones_cancha;
