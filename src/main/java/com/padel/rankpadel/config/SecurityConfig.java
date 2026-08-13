@@ -8,6 +8,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
+
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -77,7 +79,14 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/configuracion-sede").permitAll()
                         // La franja de auspiciantes la ve el jugador; administrarlos, no.
                         .requestMatchers(HttpMethod.GET, "/api/sponsors").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/reservas/disponibilidad").permitAll()
+                        // Las DOS variantes van juntas: la grilla pública de turnos usa
+                        // "disponibilidad-sede", y como el matcher es de ruta exacta,
+                        // habilitar solo "disponibilidad" la dejaba caer en el
+                        // hasRole("ADMIN") del final. Resultado: el visitante recibía un
+                        // 401 y la página le decía que no quedaba ningún horario libre.
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/reservas/disponibilidad",
+                                "/api/reservas/disponibilidad-sede").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/reservas").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/reservas/lote").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/torneos/*/inscripciones").permitAll()
@@ -119,14 +128,34 @@ public class SecurityConfig {
                         .requestMatchers("/api/importar/**").hasRole("DUENIO")
 
                         .anyRequest().hasRole("ADMIN"))
-                .exceptionHandling(ex -> ex.authenticationEntryPoint(
-                        (request, response, authException) -> response.sendError(
-                                HttpStatus.UNAUTHORIZED.value(), "No autenticado")))
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint((request, response, authException) -> responderJson(
+                                response, HttpStatus.UNAUTHORIZED, "No autenticado"))
+                        // Sin este manejador, al del mostrador que entra a una pantalla de
+                        // dueño se le respondía 401, igual que si no tuviera sesión, y el
+                        // front lee el 401 como "sesión vencida" y lo desloguea. Está
+                        // autenticado: lo que no tiene es permiso, y eso es un 403.
+                        .accessDeniedHandler((request, response, deniedException) -> responderJson(
+                                response, HttpStatus.FORBIDDEN, "No tenés permiso para esta acción")))
                 .addFilterBefore(publicWriteRateLimitFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(loginRateLimitFilter, PublicWriteRateLimitFilter.class)
                 .addFilterBefore(jwtFilter, LoginRateLimitFilter.class);
 
         return http.build();
+    }
+
+    /**
+     * Los rechazos de seguridad salen con el mismo cuerpo {status, error, mensaje} que
+     * usa el resto de la API. Con {@code sendError} el cuerpo viajaba vacío y el front
+     * no tenía qué mostrarle a la persona.
+     */
+    private static void responderJson(HttpServletResponse response, HttpStatus estado, String mensaje)
+            throws java.io.IOException {
+        response.setStatus(estado.value());
+        response.setContentType("application/json;charset=UTF-8");
+        response.getWriter().write("{\"status\":" + estado.value()
+                + ",\"error\":\"" + estado.getReasonPhrase() + "\""
+                + ",\"mensaje\":\"" + mensaje + "\"}");
     }
 
     @Bean
