@@ -253,6 +253,26 @@ class DisponibilidadCanchaServiceTest {
     }
 
     /** Cancha abierta de 18 a 22 con las duraciones indicadas. */
+    @Test
+    @DisplayName("Cada duración de la grilla viene con su precio, no en null")
+    void slots_cadaOpcionTraeSuPrecio() {
+        LocalDate fecha = LocalDate.now().plusDays(1);
+        Cancha cancha = Cancha.builder().id(1L).nombre("Cancha 1")
+                .precioPorHora(new java.math.BigDecimal("10000")).build();
+
+        when(horarioCanchaRepository.findByCanchaIdAndActivoTrue(1L)).thenReturn(List.of(horario("60,120")));
+        when(reservaRepository.findByCanchaIdAndFecha(1L, fecha)).thenReturn(List.of());
+        when(bloqueoCanchaRepository.findByCanchaId(1L)).thenReturn(List.of());
+        when(partidoRepository.findByCanchaIdAndFechaHoraProgramadaBetween(any(), any(), any())).thenReturn(List.of());
+        when(canchaRepository.findById(1L)).thenReturn(java.util.Optional.of(cancha));
+
+        // El endpoint público llama por id: antes esa variante pasaba la cancha en null
+        // y devolvía todas las opciones sin precio.
+        assertThat(service.slots(1L, fecha).get(0).getOpciones())
+                .extracting(OpcionDuracion::getPrecio)
+                .containsExactly(new java.math.BigDecimal("10000.00"), new java.math.BigDecimal("20000.00"));
+    }
+
     private HorarioCancha horario(String duraciones) {
         return HorarioCancha.builder()
                 .horaApertura(LocalTime.of(18, 0)).horaCierre(LocalTime.of(22, 0))

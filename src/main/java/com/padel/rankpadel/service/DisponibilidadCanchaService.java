@@ -26,6 +26,7 @@ import com.padel.rankpadel.entity.HorarioCancha;
 import com.padel.rankpadel.entity.Partido;
 import com.padel.rankpadel.entity.Reserva;
 import com.padel.rankpadel.enums.EstadoReserva;
+import com.padel.rankpadel.exception.EstadoInvalidoException;
 import com.padel.rankpadel.repository.BloqueoCanchaRepository;
 import com.padel.rankpadel.repository.CanchaRepository;
 import com.padel.rankpadel.repository.HorarioCanchaRepository;
@@ -82,10 +83,13 @@ public class DisponibilidadCanchaService {
         if (horario == null || !fechaHabilitada(horario, fecha)) {
             return List.of();
         }
-        return slots(canchaId, fecha, horario, null);
+        // Trae la cancha para poder cotizar. Antes pasaba null fijo y cada opción de
+        // duración salía con precio nulo: el endpoint público listaba las duraciones sin
+        // decir cuánto sale ninguna, y la variante que sí cotizaba no la llamaba nadie.
+        return slots(canchaId, fecha, horario, canchaRepository.findById(canchaId).orElse(null));
     }
 
-    /** Igual que {@link #slots}, pero cotizando con la cancha ya cargada. */
+    /** Igual que {@link #slots}, pero con la cancha ya cargada para no volver a buscarla. */
     public List<SlotDisponibilidad> slots(Cancha cancha, LocalDate fecha) {
         HorarioCancha horario = horarioActivo(cancha.getId());
         if (horario == null || !fechaHabilitada(horario, fecha)) {
@@ -440,6 +444,48 @@ public class DisponibilidadCanchaService {
 
     private LocalDateTime aDateTime(LocalDate fecha, LocalTime hora, LocalTime apertura) {
         return hora.isBefore(apertura) ? fecha.plusDays(1).atTime(hora) : fecha.atTime(hora);
+    }
+
+    /**
+     * Valida que el club realmente venda ese horario: día habilitado, dentro de la
+     * anticipación permitida, y el turno entero entre la apertura y el cierre.
+     *
+     * <p>La grilla ya filtra todo esto al mostrar, pero el POST de reservas es público y
+     * no volvía a chequearlo: entraban turnos a las 5 de la mañana con el club cerrado, o
+     * a tres meses vista cuando la cancha se vende con dos semanas de anticipación. La
+     * duración sí se validaba; a estas dos se les había pasado.
+     */
+    public void validarHorarioVendible(Long canchaId, LocalDate fecha, LocalTime horaInicio, int duracionMin) {
+        HorarioCancha horario = horarioActivo(canchaId);
+        if (horario == null) {
+            throw new EstadoInvalidoException("Esta cancha todavía no tiene horario de atención cargado.");
+        }
+
+        LocalDate hoy = LocalDate.now();
+        if (fecha.isBefore(hoy)) {
+            throw new EstadoInvalidoException("No se puede reservar un día que ya pasó");
+        }
+        if (horario.getAnticipacionDias() > 0 && fecha.isAfter(hoy.plusDays(horario.getAnticipacionDias()))) {
+            throw new EstadoInvalidoException("Los turnos se pueden sacar con hasta "
+                    + horario.getAnticipacionDias() + " días de anticipación.");
+        }
+        if (!diaActivo(horario.getDiasActivos(), fecha)) {
+            throw new EstadoInvalidoException("El club no atiende ese día.");
+        }
+
+        // La sesión puede cruzar medianoche (abre 10, cierra 02): el cierre se compara
+        // sobre la línea de tiempo real, no contra el reloj.
+        LocalTime apertura = horario.getHoraApertura();
+        LocalDateTime inicioSesion = fecha.atTime(apertura);
+        LocalDateTime finSesion = fecha.atTime(horario.getHoraCierre());
+        if (!finSesion.isAfter(inicioSesion)) {
+            finSesion = finSesion.plusDays(1);
+        }
+        LocalDateTime inicio = aDateTime(fecha, horaInicio, apertura);
+        if (inicio.isBefore(inicioSesion) || inicio.plusMinutes(duracionMin).isAfter(finSesion)) {
+            throw new EstadoInvalidoException("El club atiende de " + apertura + " a "
+                    + horario.getHoraCierre() + ". El turno tiene que entrar completo en ese horario.");
+        }
     }
 
     private HorarioCancha horarioActivo(Long canchaId) {

@@ -92,12 +92,16 @@ public class ReservaService {
      * turno que tipea no es un aviso, es ruido que termina haciendo que no se lean.
      */
     private void avisarSiLoPidioUnJugador(Reserva reserva) {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        boolean loCargoElClub = auth != null && auth.isAuthenticated()
-                && auth.getAuthorities().stream().anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
-        if (!loCargoElClub) {
+        if (!loCargoElClub()) {
             notificacionService.avisarNuevaSolicitudReserva(reserva);
         }
+    }
+
+    /** Si el turno lo está cargando alguien del club desde el panel y no un jugador. */
+    private boolean loCargoElClub() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        return auth != null && auth.isAuthenticated()
+                && auth.getAuthorities().stream().anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
     }
 
     @Transactional
@@ -195,7 +199,19 @@ public class ReservaService {
         return cancha;
     }
 
+    /**
+     * Tope de solicitudes sin confirmar por teléfono, para que nadie bloquee la agenda
+     * desde la web.
+     *
+     * <p>No corre para el club: cuando el turno lo carga el mostrador, el cliente está
+     * de frente o al teléfono y ya hay una persona decidiendo. Con el tope activo, a un
+     * cliente que ya tenía tres turnos pedidos no se le podía agendar el cuarto desde el
+     * panel, que es justo lo contrario de lo que la protección busca.
+     */
     private void validarTopePendientes(String telefono, int cantidadNueva) {
+        if (loCargoElClub()) {
+            return;
+        }
         long pendientes = reservaRepository.countByClienteTelefonoAndEstado(telefono, EstadoReserva.PENDIENTE);
         if (pendientes + cantidadNueva > MAX_PENDIENTES_POR_TELEFONO) {
             throw new EstadoInvalidoException(
@@ -206,6 +222,11 @@ public class ReservaService {
 
     private Reserva crearReserva(Cancha cancha, LocalDate fecha, LocalTime horaInicio, int duracionMin,
             String clienteNombre, String telefono, Pago pago, int expiracionMinutos) {
+        // El horario de atención se valida acá y no solo en la grilla: este método lo
+        // alcanza el POST público de reservas, que antes aceptaba cualquier hora y
+        // cualquier fecha con tal de que el rango estuviera libre.
+        disponibilidadCanchaService.validarHorarioVendible(cancha.getId(), fecha, horaInicio, duracionMin);
+
         LocalDateTime inicioReal = disponibilidadCanchaService.inicioReal(cancha.getId(), fecha, horaInicio);
         if (inicioReal.isBefore(LocalDateTime.now())) {
             throw new EstadoInvalidoException("No se puede reservar un horario que ya pasó");
