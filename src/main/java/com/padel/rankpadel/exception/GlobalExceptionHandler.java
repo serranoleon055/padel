@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @ControllerAdvice
 public class GlobalExceptionHandler {
@@ -42,6 +43,22 @@ public class GlobalExceptionHandler {
                 .timestamp(LocalDateTime.now())
                 .build();
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(apiError);
+    }
+
+    /**
+     * Una URL que no existe es un 404, no un error del servidor. Sin esto caía en el
+     * manejador genérico: respondía 500 y dejaba un ERROR en el log por cada bot que
+     * prueba rutas al azar, que es ruido que después tapa los errores de verdad.
+     */
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiError> handleRutaInexistente(NoResourceFoundException ex) {
+        ApiError apiError = ApiError.builder()
+                .status(404)
+                .error("Not Found")
+                .mensaje("La dirección solicitada no existe.")
+                .timestamp(LocalDateTime.now())
+                .build();
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(apiError);
     }
 
     @ExceptionHandler(ResourceNotFoundException.class)
