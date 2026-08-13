@@ -20,6 +20,17 @@ services:
     envVars:
       - key: SPRING_PROFILES_ACTIVE
         value: prod
+      # El contenedor del plan free tiene 512 MB. Sin tope explícito la JVM se guía
+      # por lo que ve del host y termina pidiendo más memoria de la que hay: el
+      # servicio se cae solo cada tantos minutos, sobre todo subiendo imágenes.
+      - key: JAVA_TOOL_OPTIONS
+        value: "-Xmx384m -XX:MaxMetaspaceSize=128m"
+      # A dónde vuelve el que pagó. Sin esto cae en el default de desarrollo
+      # (http://localhost:5173) y el link de pago de la seña, que es lo que se le
+      # muestra al cliente, apunta a una página que no existe. Vale para la seña
+      # del turno y para la inscripción a torneos.
+      - key: MERCADO_PAGO_BACK_URL_BASE
+        sync: false
       # Modo demo: los pagos se aprueban solos para que el cliente pueda probar el
       # circuito sin gastar. PAGOS_DEMO_PUBLICA es el permiso explícito que pide
       # SecretsGuard para dejar correr eso contra una base remota; sin las dos, la
