@@ -62,6 +62,23 @@ public interface VentaRepository extends JpaRepository<Venta, Long> {
     List<TotalPorMes> totalPorMes(@Param("desde") LocalDateTime desde);
 
     /**
+     * Costo de la mercadería VENDIDA por mes, con el costo congelado en cada renglón.
+     *
+     * <p>Es lo que se resta de los ingresos para llegar a la ganancia bruta. Ojo: NO es lo
+     * mismo que la mercadería comprada en el mes —eso es inventario y vive en el capital
+     * en stock hasta que se venda—. Confundirlos hace que un mes con una compra grande se
+     * vea en rojo aunque no se haya vendido nada todavía.
+     */
+    @Query("""
+        SELECT FUNCTION('DATE_FORMAT', v.fecha, '%Y-%m') AS mes,
+               COALESCE(SUM(COALESCE(i.costoUnitario, 0) * i.cantidad), 0) AS total
+        FROM VentaItem i JOIN i.venta v
+        WHERE v.fecha >= :desde AND v.anuladoEn IS NULL
+        GROUP BY FUNCTION('DATE_FORMAT', v.fecha, '%Y-%m')
+        """)
+    List<TotalPorMes> costoMercaderiaVendidaPorMes(@Param("desde") LocalDateTime desde);
+
+    /**
      * Ranking de productos en un período: unidades, facturación y ganancia. Todo en una
      * consulta agrupada; recorrer las ventas en Java sería un N+1 disfrazado.
      */

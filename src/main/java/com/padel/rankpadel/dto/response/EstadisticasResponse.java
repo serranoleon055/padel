@@ -142,6 +142,21 @@ public class EstadisticasResponse {
         private long reservas;
     }
 
+    /**
+     * El estado de resultados del mes, con criterio devengado:
+     *
+     * <pre>
+     *   ingresos            turnos + inscripciones + ventas
+     * - costoMercaderia     costo congelado de lo VENDIDO (no de lo comprado)
+     * = gananciaBruta
+     * - gastosOperativos    luz, sueldos, mantenimiento... SIN las compras de mercadería
+     * = resultado
+     * </pre>
+     *
+     * <p>Las compras de mercadería quedan afuera de los gastos operativos a propósito: son
+     * inventario, no gasto, y viven en el capital en stock hasta venderse. Contarlas ahí y
+     * además restar el costo de lo vendido sería contar la misma plata dos veces.
+     */
     @Getter
     @Setter
     @AllArgsConstructor
@@ -153,9 +168,17 @@ public class EstadisticasResponse {
         private BigDecimal inscripciones;
         /** Lo vendido en el mostrador: pelotas, bebidas, alquiler de paletas. */
         private BigDecimal ventas;
-        /** Egresos del mes: sin esto el gráfico muestra facturación, no rentabilidad. */
-        private BigDecimal egresos;
-        /** Ingresos menos egresos. */
+        /** turnos + inscripciones + ventas. */
+        private BigDecimal ingresos;
+        /** Costo congelado de la mercadería vendida en el mes. */
+        private BigDecimal costoMercaderia;
+        /** Ingresos menos el costo de lo vendido. */
+        private BigDecimal gananciaBruta;
+        /** Gastos del mes SIN las compras de mercadería. */
+        private BigDecimal gastosOperativos;
+        /** Compras de mercadería del mes: no es gasto, es inventario. Se informa aparte. */
+        private BigDecimal comprasMercaderia;
+        /** Ganancia bruta menos gastos operativos. */
         private BigDecimal resultado;
     }
 

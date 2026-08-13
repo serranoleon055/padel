@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.YearMonth;
 import java.util.ArrayList;
@@ -472,10 +473,14 @@ public class EstadisticaService {
 
         // Una sola consulta agrupada para los seis meses: recorrer las ventas en Java
         // sería traer todos los renglones del semestre para sumarlos.
+        LocalDateTime desdeVentas = actual.minusMonths(5).atDay(1).atStartOfDay();
         Map<String, BigDecimal> ventasPorMes = new HashMap<>();
-        for (VentaRepository.TotalPorMes fila : ventaRepository
-                .totalPorMes(actual.minusMonths(5).atDay(1).atStartOfDay())) {
+        for (VentaRepository.TotalPorMes fila : ventaRepository.totalPorMes(desdeVentas)) {
             ventasPorMes.put(fila.getMes(), fila.getTotal());
+        }
+        Map<String, BigDecimal> costoPorMes = new HashMap<>();
+        for (VentaRepository.TotalPorMes fila : ventaRepository.costoMercaderiaVendidaPorMes(desdeVentas)) {
+            costoPorMes.put(fila.getMes(), fila.getTotal());
         }
 
         for (int i = 5; i >= 0; i--) {
@@ -490,19 +495,39 @@ public class EstadisticaService {
                             && YearMonth.from(solicitud.getCreadoEn()).equals(mes))
                     .map(this::ingresoSolicitud)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
-            BigDecimal egresos = gastos.stream()
+            // Los gastos se parten en dos: la compra de mercadería es inventario (queda en
+            // el stock hasta venderse) y el resto son gastos operativos del mes. El
+            // discriminador es `Gasto.producto`, que solo lo tienen las compras. Meter la
+            // compra en los gastos Y restar el costo de lo vendido contaría dos veces la
+            // misma plata.
+            List<Gasto> delMes = gastos.stream()
                     .filter(gasto -> gasto.getFecha() != null && YearMonth.from(gasto.getFecha()).equals(mes))
+                    .toList();
+            BigDecimal gastosOperativos = delMes.stream()
+                    .filter(gasto -> gasto.getProducto() == null)
                     .map(Gasto::getMonto)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal comprasMercaderia = delMes.stream()
+                    .filter(gasto -> gasto.getProducto() != null)
+                    .map(Gasto::getMonto)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+
             BigDecimal ventas = ventasPorMes.getOrDefault(mes.toString(), BigDecimal.ZERO);
+            BigDecimal costoMercaderia = costoPorMes.getOrDefault(mes.toString(), BigDecimal.ZERO);
+            BigDecimal totalIngresos = turnos.add(inscripciones).add(ventas);
+            BigDecimal gananciaBruta = totalIngresos.subtract(costoMercaderia);
 
             ingresos.add(IngresoMes.builder()
                     .mes(mes.toString())
                     .turnos(turnos)
                     .inscripciones(inscripciones)
                     .ventas(ventas)
-                    .egresos(egresos)
-                    .resultado(turnos.add(inscripciones).add(ventas).subtract(egresos))
+                    .ingresos(totalIngresos)
+                    .costoMercaderia(costoMercaderia)
+                    .gananciaBruta(gananciaBruta)
+                    .gastosOperativos(gastosOperativos)
+                    .comprasMercaderia(comprasMercaderia)
+                    .resultado(gananciaBruta.subtract(gastosOperativos))
                     .build());
         }
         return ingresos;
