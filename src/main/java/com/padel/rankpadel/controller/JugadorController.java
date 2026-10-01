@@ -8,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -24,7 +25,9 @@ import com.padel.rankpadel.dto.response.JugadorFichaResponse;
 import com.padel.rankpadel.dto.response.JugadorHistorialResponse;
 import com.padel.rankpadel.dto.response.JugadorResponse;
 import com.padel.rankpadel.dto.response.PagedResponse;
+import com.padel.rankpadel.enums.Genero;
 import com.padel.rankpadel.service.JugadorService;
+import com.padel.rankpadel.util.UsuarioActual;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -53,13 +56,27 @@ public class JugadorController {
         return ResponseEntity.ok(jugadorService.listarTodos());
     }
 
+    /**
+     * Listado paginado con los filtros resueltos en la base.
+     *
+     * <p>Antes esto traía la tabla entera y la cortaba en memoria, que es paginar de
+     * mentira: el costo de la consulta y el tamaño de la respuesta eran los mismos.
+     */
     @SecurityRequirements({})
-    @Operation(summary = "Listar jugadores paginado", description = "page inicia en 0. size por defecto 20.")
+    @Operation(summary = "Listar jugadores paginado", description = "pagina inicia en 0. tamanio por defecto 20.")
     @GetMapping("/paginado")
     public ResponseEntity<PagedResponse<JugadorResponse>> listarPaginado(
+            @RequestParam(required = false) String busqueda,
+            @RequestParam(required = false) Genero genero,
+            @RequestParam(required = false) Long categoriaId,
+            @RequestParam(defaultValue = "false") boolean incluirBajas,
             @RequestParam(defaultValue = "0") int pagina,
             @RequestParam(defaultValue = "20") int tamanio) {
-        return ResponseEntity.ok(PagedResponse.of(jugadorService.listarTodos(), pagina, tamanio));
+        // Este endpoint es público: los jugadores dados de baja solo se listan para quien
+        // entró al panel, que es el único que puede reactivarlos. Sin este filtro, mandar
+        // el parámetro a mano desde afuera mostraba gente que el club decidió esconder.
+        return ResponseEntity.ok(jugadorService.listarPagina(
+                busqueda, genero, categoriaId, incluirBajas && UsuarioActual.esAdmin(), pagina, tamanio));
     }
 
     @SecurityRequirements({})
@@ -154,6 +171,13 @@ public class JugadorController {
     public ResponseEntity<?> eliminarBatch(@RequestBody BatchDeleteRequest request) {
         jugadorService.eliminarBatch(request.getIds());
         return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "Reactivar jugador", description = "Requiere JWT. Devuelve al listado a un jugador dado de baja.")
+    @PatchMapping("/{id}/reactivar")
+    public ResponseEntity<JugadorResponse> reactivar(
+            @Parameter(description = "ID del jugador") @PathVariable Long id) {
+        return ResponseEntity.ok(jugadorService.reactivar(id));
     }
 
 }

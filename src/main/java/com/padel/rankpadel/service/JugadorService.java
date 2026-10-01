@@ -8,6 +8,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -17,6 +20,8 @@ import com.padel.rankpadel.dto.response.JugadorBusquedaResponse;
 import com.padel.rankpadel.dto.response.JugadorFichaResponse;
 import com.padel.rankpadel.dto.response.JugadorHistorialResponse;
 import com.padel.rankpadel.dto.response.JugadorResponse;
+import com.padel.rankpadel.dto.response.PagedResponse;
+import com.padel.rankpadel.enums.Genero;
 import com.padel.rankpadel.entity.Categoria;
 import com.padel.rankpadel.entity.ConfiguracionPuntos;
 import com.padel.rankpadel.entity.Jugador;
@@ -62,6 +67,33 @@ public class JugadorService {
                 .stream()
                 .map(jugadorMapper::jugadorToResponse)
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Una página de jugadores, con la búsqueda y los filtros resueltos en la base.
+     *
+     * <p>Ordena por nombre y apellido para que la paginación sea estable: sin un orden
+     * explícito, el mismo jugador puede aparecer en dos páginas distintas.
+     */
+    @Transactional(readOnly = true)
+    public PagedResponse<JugadorResponse> listarPagina(String busqueda, Genero genero,
+            Long categoriaId, boolean incluirBajas, int pagina, int tamanio) {
+        String prefijo = busqueda != null && !busqueda.isBlank()
+                ? busqueda.trim().toLowerCase() + "%"
+                : null;
+        Page<Jugador> pagados = jugadorRepository.buscarPagina(prefijo, genero, categoriaId, incluirBajas,
+                PageRequest.of(Math.max(0, pagina), Math.min(Math.max(1, tamanio), 100),
+                        Sort.by("nombre").ascending().and(Sort.by("apellido").ascending())));
+
+        return PagedResponse.<JugadorResponse>builder()
+                .contenido(pagados.getContent().stream().map(jugadorMapper::jugadorToResponse).toList())
+                .pagina(pagados.getNumber())
+                .tamanio(pagados.getSize())
+                .totalElementos(pagados.getTotalElements())
+                .totalPaginas(pagados.getTotalPages())
+                .esPrimera(pagados.isFirst())
+                .esUltima(pagados.isLast())
+                .build();
     }
 
     @Transactional(readOnly = true)
@@ -170,6 +202,22 @@ public class JugadorService {
         List<Jugador> jugadores = jugadorRepository.findAllById(ids);
         jugadores.forEach(jugador -> jugador.setActivo(false));
         jugadorRepository.saveAll(jugadores);
+    }
+
+    /**
+     * Vuelve a poner en el listado a un jugador dado de baja.
+     *
+     * <p>La baja es lógica —el jugador sigue en sus torneos y en el ranking— pero no tenía
+     * vuelta: borrar por error obligaba a cargarlo de nuevo, y el nuevo era otra persona
+     * para el sistema, sin su historial.
+     */
+    @Transactional
+    public JugadorResponse reactivar(Long id) {
+        Jugador jugador = jugadorRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Jugador", id));
+        jugador.setActivo(true);
+        jugadorRepository.save(jugador);
+        return jugadorMapper.jugadorToResponse(jugador);
     }
 
     @Transactional(readOnly = true)

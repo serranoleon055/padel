@@ -28,4 +28,7 @@ public class JugadorResponse {
     private String categoriaNombre;
     private PosicionJuego posicionJuego;
 
+    /** Para que el panel distinga al jugador dado de baja y pueda reactivarlo. */
+    private boolean activo;
+
 }
