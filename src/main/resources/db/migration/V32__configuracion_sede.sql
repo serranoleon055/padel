@@ -35,5 +35,5 @@ INSERT INTO configuracion_sede (
     '[{"dias":"Lunes a Viernes","horas":"08:00 - 00:00"},{"dias":"Sabados","horas":"09:00 - 01:00"},{"dias":"Domingos y feriados","horas":"09:00 - 23:00"}]',
     '[{"icono":"beer","titulo":"Bar y cantina","descripcion":"Bebidas, snacks y comidas antes y despues de jugar."},{"icono":"shower","titulo":"Vestuarios","descripcion":"Vestuarios con duchas para hombres y mujeres."},{"icono":"dumbbell","titulo":"Alquiler de paletas","descripcion":"Paletas y pelotas disponibles en recepcion."},{"icono":"car","titulo":"Estacionamiento","descripcion":"Espacio para dejar tu auto mientras jugas."},{"icono":"wifi","titulo":"WiFi","descripcion":"Conexion libre en todo el complejo."},{"icono":"shirt","titulo":"Pro shop","descripcion":"Indumentaria y accesorios de padel."}]',
     '[{"url":"/images/fondo cancha.jpg","alt":"Cancha de padel"},{"url":"/images/tapia.png","alt":"Jugador en accion"},{"url":"/images/galan.jpg","alt":"Partido en el complejo"},{"url":"/images/coello.jpg","alt":"Vista del complejo"}]',
-    '["Efectivo","Transferencia","Mercado Pago (sena online)"]'
+    '["Efectivo","Transferencia","Mercado Pago (seña online)"]'
 );
