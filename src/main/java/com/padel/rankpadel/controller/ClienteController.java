@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.padel.rankpadel.dto.request.ClienteRequest;
 import com.padel.rankpadel.dto.response.ClienteFichaResponse;
 import com.padel.rankpadel.dto.response.ClienteResponse;
+import com.padel.rankpadel.dto.response.SeguimientoClienteResponse;
 import com.padel.rankpadel.service.ClienteService;
 
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -37,6 +38,20 @@ public class ClienteController {
             @RequestParam(defaultValue = "20") int tamano) {
         return ResponseEntity.ok(clienteService.listar(busqueda, Math.max(pagina, 0),
                 Math.clamp(tamano, 1, TAMANO_MAXIMO)));
+    }
+
+    /**
+     * A quién conviene escribirle hoy. El club ya tiene todos estos datos cargados: lo que
+     * faltaba era que el sistema los mirara por él.
+     *
+     * @param tipo DORMIDOS, MEJORES o NUEVOS.
+     * @param dias ventana en días de cada lista.
+     */
+    @GetMapping("/seguimiento")
+    public ResponseEntity<java.util.List<SeguimientoClienteResponse>> seguimiento(
+            @RequestParam(defaultValue = "DORMIDOS") String tipo,
+            @RequestParam(defaultValue = "45") int dias) {
+        return ResponseEntity.ok(clienteService.seguimiento(tipo, Math.clamp(dias, 1, 3650)));
     }
 
     @GetMapping("/{id}")

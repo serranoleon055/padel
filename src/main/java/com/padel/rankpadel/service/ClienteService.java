@@ -1,7 +1,9 @@
 package com.padel.rankpadel.service;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -10,6 +12,7 @@ import java.util.Set;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,6 +21,7 @@ import com.padel.rankpadel.dto.request.ClienteRequest;
 import com.padel.rankpadel.dto.response.ClienteFichaResponse;
 import com.padel.rankpadel.dto.response.ClienteResponse;
 import com.padel.rankpadel.dto.response.ReservaResponse;
+import com.padel.rankpadel.dto.response.SeguimientoClienteResponse;
 import com.padel.rankpadel.entity.Cliente;
 import com.padel.rankpadel.entity.Reserva;
 import com.padel.rankpadel.entity.Venta;
@@ -67,16 +71,34 @@ public class ClienteService {
      */
     @Transactional
     public Cliente buscarOCrear(String nombre, String telefono) {
+        return buscarOCrear(nombre, telefono, null);
+    }
+
+    /**
+     * Igual, pero guardando el mail que la persona dejó al reservar.
+     *
+     * <p>Se completa solo si la ficha todavía no tiene ninguno. Igual que con el nombre, lo
+     * que ya está cargado no se pisa: la ficha es del club y una corrección hecha a mano no
+     * puede perderse porque alguien tipeó otra cosa en el formulario público.
+     */
+    @Transactional
+    public Cliente buscarOCrear(String nombre, String telefono, String email) {
         String normalizado = NormalizadorTelefono.normalizar(telefono);
         if (normalizado == null) {
             return null;
         }
-        return clienteRepository.findByTelefonoNormalizado(normalizado)
+        Cliente cliente = clienteRepository.findByTelefonoNormalizado(normalizado)
                 .orElseGet(() -> clienteRepository.save(Cliente.builder()
                         .nombre(nombre != null ? nombre.trim() : "Sin nombre")
                         .telefono(telefono.trim())
                         .creadoEn(LocalDateTime.now())
                         .build()));
+        if (email != null && !email.isBlank()
+                && (cliente.getEmail() == null || cliente.getEmail().isBlank())) {
+            cliente.setEmail(email.trim());
+            clienteRepository.save(cliente);
+        }
+        return cliente;
     }
 
     @Transactional(readOnly = true)
@@ -96,6 +118,55 @@ public class ClienteService {
 
         return clientes.map(cliente ->
                 aResponse(cliente, resumenes.get(cliente.getId()), conJugador.contains(cliente.getId())));
+    }
+
+    // ── Seguimiento ────────────────────────────────────────────────────────────────
+
+    /** Turnos que cuentan como "vino al club": los que ocuparon la cancha. */
+    private static final Set<EstadoReserva> VISITAS = Set.of(
+            EstadoReserva.CONFIRMADA, EstadoReserva.FINALIZADA, EstadoReserva.NO_SHOW);
+
+    /**
+     * Cuántos turnos tiene que tener alguien para contarlo como cliente que se enfrió. Con
+     * uno solo, la lista se llena de gente que probó una vez y nunca fue cliente.
+     */
+    private static final long TURNOS_PARA_SER_HABITUAL = 2;
+
+    private static final int TOPE_SEGUIMIENTO = 50;
+
+    /**
+     * Clientes a los que conviene escribirles, según lo que el club quiera mirar.
+     *
+     * @param tipo DORMIDOS (venían y dejaron de venir), MEJORES (los que más gastaron) o
+     *             NUEVOS (los que estrenaron el club hace poco).
+     * @param dias ventana en días: cuánto hace que no viene, o desde cuándo se mira.
+     */
+    @Transactional(readOnly = true)
+    public List<SeguimientoClienteResponse> seguimiento(String tipo, int dias) {
+        LocalDate hoy = LocalDate.now();
+        Pageable tope = PageRequest.of(0, TOPE_SEGUIMIENTO);
+        List<ReservaRepository.ClienteSeguimiento> filas = switch (tipo == null ? "" : tipo.toUpperCase()) {
+            case "MEJORES" -> reservaRepository.mejoresClientes(hoy.minusDays(dias), hoy, VISITAS, tope);
+            case "NUEVOS" -> reservaRepository.clientesNuevos(hoy.minusDays(dias), hoy, VISITAS, tope);
+            default -> reservaRepository.clientesDormidos(
+                    hoy.minusDays(dias), TURNOS_PARA_SER_HABITUAL, VISITAS, tope);
+        };
+
+        return filas.stream().map(fila -> SeguimientoClienteResponse.builder()
+                .clienteId(fila.getClienteId())
+                .nombre(fila.getNombre())
+                .telefono(fila.getTelefono())
+                .turnos(fila.getTurnos())
+                .gastado(fila.getGastado())
+                .ultimoTurno(fila.getUltimoTurno())
+                .primerTurno(fila.getPrimerTurno())
+                // Nunca negativo: si igual entrara un turno futuro, "hace -8 días" es un
+                // número que no se le puede mostrar a nadie.
+                .diasSinVenir(fila.getUltimoTurno() != null
+                        ? Math.max(0, ChronoUnit.DAYS.between(fila.getUltimoTurno(), hoy))
+                        : 0)
+                .build())
+                .toList();
     }
 
     @Transactional(readOnly = true)
