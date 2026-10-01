@@ -238,6 +238,19 @@ public class TorneoController {
                 return ResponseEntity.ok().build();
         }
 
+        @Operation(summary = "Deshacer el sorteo", description = "Requiere JWT. Borra el cuadro generado y devuelve el torneo a INSCRIPCION. Solo si está SORTEADO y sin resultados cargados.")
+        @ApiResponses({
+                        @ApiResponse(responseCode = "200", description = "Sorteo deshecho, el torneo vuelve a INSCRIPCION"),
+                        @ApiResponse(responseCode = "400", description = "El torneo no está sorteado o ya tiene resultados", content = @Content),
+                        @ApiResponse(responseCode = "401", description = "No autenticado", content = @Content)
+        })
+        @DeleteMapping("/{id}/sorteo")
+        public ResponseEntity<Void> deshacerSorteo(
+                        @Parameter(description = "ID del torneo") @PathVariable Long id) {
+                sorteoService.deshacerSorteo(id);
+                return ResponseEntity.ok().build();
+        }
+
         @Operation(summary = "Reaplicar plantilla de puntos", description = "Requiere JWT. Borra la configuración de puntos del torneo, re-copia las rondas de su plantilla (o de una nueva si se pasa plantillaPuntosId) y recalcula el ranking.")
         @ApiResponses({
                         @ApiResponse(responseCode = "200", description = "Plantilla reaplicada y ranking recalculado", content = @Content(schema = @Schema(implementation = TorneoResponse.class))),

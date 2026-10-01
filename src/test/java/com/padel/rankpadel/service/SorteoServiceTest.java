@@ -1,11 +1,13 @@
 package com.padel.rankpadel.service;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.junit.jupiter.api.DisplayName;
@@ -16,7 +18,11 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import com.padel.rankpadel.entity.Grupo;
+import com.padel.rankpadel.entity.Pareja;
+import com.padel.rankpadel.entity.Partido;
 import com.padel.rankpadel.entity.Torneo;
+import com.padel.rankpadel.enums.EstadoPartido;
 import com.padel.rankpadel.enums.EstadoTorneo;
 import com.padel.rankpadel.exception.EstadoInvalidoException;
 import com.padel.rankpadel.exception.ResourceNotFoundException;
@@ -130,6 +136,75 @@ class SorteoServiceTest {
                     () -> sorteoService.generarSorteo(1L));
 
             verify(partidoRepository, never()).saveAll(any());
+        }
+    }
+
+    @Nested
+    @DisplayName("Deshacer el sorteo")
+    class DeshacerSorteo {
+
+        private Torneo sorteado() {
+            return Torneo.builder().id(1L).estado(EstadoTorneo.SORTEADO).build();
+        }
+
+        @Test
+        @DisplayName("Borra el cuadro, limpia los cabezas de serie y vuelve a INSCRIPCION")
+        void deshacer_borraElCuadro() {
+            Torneo torneo = sorteado();
+            Partido partido = Partido.builder().id(9L).estado(EstadoPartido.PENDIENTE).build();
+            Grupo grupo = Grupo.builder().id(3L).build();
+            Pareja pareja = Pareja.builder().id(4L).esCabezaDeSerie(true).build();
+            when(torneoRepository.findById(1L)).thenReturn(Optional.of(torneo));
+            when(partidoRepository.findByTorneoId(1L)).thenReturn(List.of(partido));
+            when(grupoRepository.findByTorneoId(1L)).thenReturn(List.of(grupo));
+            when(posicionGrupoRepository.findByGrupoId(3L)).thenReturn(List.of());
+            when(rondaEliminatoriasRepository.findByTorneoIdOrderByOrden(1L)).thenReturn(List.of());
+            when(parejaRepository.findByTorneoId(1L)).thenReturn(List.of(pareja));
+
+            sorteoService.deshacerSorteo(1L);
+
+            verify(partidoRepository).deleteAll(List.of(partido));
+            verify(grupoRepository).deleteAll(List.of(grupo));
+            assertThat(pareja.isEsCabezaDeSerie()).isFalse();
+            assertThat(torneo.getEstado()).isEqualTo(EstadoTorneo.INSCRIPCION);
+        }
+
+        /**
+         * El freno que importa: con un resultado cargado, deshacer el sorteo borraría
+         * partidos jugados. Para eso está reabrir el torneo, que es otra cosa.
+         */
+        @Test
+        @DisplayName("Con un resultado ya cargado se rechaza y no borra nada")
+        void deshacer_conResultados_rechaza() {
+            when(torneoRepository.findById(1L)).thenReturn(Optional.of(sorteado()));
+            when(partidoRepository.findByTorneoId(1L)).thenReturn(List.of(
+                    Partido.builder().id(9L).estado(EstadoPartido.PENDIENTE).build(),
+                    Partido.builder().id(10L).estado(EstadoPartido.FINALIZADO).build()));
+
+            assertThrows(EstadoInvalidoException.class, () -> sorteoService.deshacerSorteo(1L));
+
+            verify(partidoRepository, never()).deleteAll(any());
+            verify(grupoRepository, never()).deleteAll(any());
+        }
+
+        @Test
+        @DisplayName("Un torneo EN_CURSO no se deshace: ya arrancó")
+        void deshacer_enCurso_rechaza() {
+            when(torneoRepository.findById(1L)).thenReturn(Optional.of(
+                    Torneo.builder().id(1L).estado(EstadoTorneo.EN_CURSO).build()));
+
+            assertThrows(EstadoInvalidoException.class, () -> sorteoService.deshacerSorteo(1L));
+
+            verify(partidoRepository, never()).deleteAll(any());
+        }
+
+        @Test
+        @DisplayName("Un torneo que ni siquiera se sorteó tampoco")
+        void deshacer_enInscripcion_rechaza() {
+            when(torneoRepository.findById(1L)).thenReturn(Optional.of(
+                    Torneo.builder().id(1L).estado(EstadoTorneo.INSCRIPCION).build()));
+
+            assertThrows(EstadoInvalidoException.class, () -> sorteoService.deshacerSorteo(1L));
         }
     }
 }

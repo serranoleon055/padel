@@ -105,6 +105,56 @@ public class SorteoService {
         torneoRepository.save(torneo);
     }
 
+    /**
+     * Deshace el sorteo: borra todo lo que generó y devuelve el torneo a INSCRIPCION.
+     *
+     * <p>Existe porque un sorteo mal hecho —faltaba una pareja, se mezclaron las
+     * categorías— no tenía vuelta atrás: la única salida era cancelar el torneo entero, y
+     * CANCELADO tampoco vuelve, así que había que rehacerlo desde cero.
+     *
+     * <p>Solo se permite en SORTEADO, sin ningún resultado cargado. Con el torneo EN_CURSO
+     * ya hay partidos jugados y puntos en el ranking: eso se reabre desde el estado, no se
+     * borra. Las parejas inscriptas no se tocan —son las que el club cargó, no algo que
+     * haya generado el sorteo—, pero sí se limpian los cabezas de serie, que los asigna el
+     * sorteo y el próximo vuelve a calcular.
+     */
+    public void deshacerSorteo(Long torneoId) {
+        Torneo torneo = torneoRepository.findById(torneoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Torneo", torneoId));
+
+        if (!EstadoTorneo.SORTEADO.equals(torneo.getEstado())) {
+            throw new EstadoInvalidoException(
+                    "Solo se puede deshacer el sorteo de un torneo sorteado que todavía no arrancó.");
+        }
+
+        List<Partido> partidos = partidoRepository.findByTorneoId(torneoId);
+        boolean hayResultados = partidos.stream()
+                .anyMatch(partido -> partido.getEstado() != EstadoPartido.PENDIENTE);
+        if (hayResultados) {
+            throw new EstadoInvalidoException(
+                    "El cuadro ya tiene resultados cargados. Deshacer el sorteo los borraría.");
+        }
+
+        // Las posiciones cuelgan de los grupos, así que van primero; los partidos apuntan
+        // a grupos y rondas, así que también.
+        partidoRepository.deleteAll(partidos);
+        List<Grupo> grupos = grupoRepository.findByTorneoId(torneoId);
+        for (Grupo grupo : grupos) {
+            posicionGrupoRepository.deleteAll(posicionGrupoRepository.findByGrupoId(grupo.getId()));
+        }
+        partidoRepository.flush();
+        posicionGrupoRepository.flush();
+        grupoRepository.deleteAll(grupos);
+        rondaEliminatoriasRepository.deleteAll(rondaEliminatoriasRepository.findByTorneoIdOrderByOrden(torneoId));
+
+        List<Pareja> parejas = parejaRepository.findByTorneoId(torneoId);
+        parejas.forEach(pareja -> pareja.setEsCabezaDeSerie(false));
+        parejaRepository.saveAll(parejas);
+
+        torneo.setEstado(EstadoTorneo.INSCRIPCION);
+        torneoRepository.save(torneo);
+    }
+
     private ConfiguracionCategoriaTorneo resolverConfig(Torneo torneo, Categoria categoria) {
         return configuracionCategoriaTorneoRepository
                 .findByTorneoIdAndCategoriaId(torneo.getId(), categoria.getId())
