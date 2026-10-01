@@ -24,6 +24,14 @@ public class ConfiguracionSede {
 
     private String email;
     private String telefono;
+
+    /**
+     * Hasta cuántas horas antes del turno el jugador lo puede cancelar solo desde el
+     * enlace que le llegó. En 0 se apaga: solo cancela el club.
+     */
+    @Builder.Default
+    private Integer cancelacionHorasMinimas = 12;
+
     private String whatsapp;
     private String instagram;
     private String facebook;

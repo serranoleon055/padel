@@ -55,6 +55,14 @@ public class DisponibilidadCanchaService {
     private static final int MAXIMO_SLOTS = 200;
     private static final int DIAS_BUSQUEDA_APERTURA = 8;
     /**
+     * Cuánto sigue siendo "la jornada de anoche" después de que el club bajó la persiana.
+     * El último turno termina a la hora de cierre pero el mostrador todavía está cobrando
+     * saldos y arqueando la caja: si la pantalla saltara al día siguiente en el minuto
+     * exacto del cierre, tendría que ir a buscar a mano la fecha de ayer para terminar de
+     * cerrar la noche.
+     */
+    private static final int MARGEN_CIERRE_JORNADA_MIN = 60;
+    /**
      * Estados que mantienen el horario tomado. Van los cuatro que conservan sus bloques
      * en {@code reserva_slots}: un turno jugado o al que el cliente no vino sigue
      * ocupando la cancha, y mostrarlo como libre hacía que la grilla ofreciera un
@@ -65,6 +73,7 @@ public class DisponibilidadCanchaService {
             EstadoReserva.FINALIZADA, EstadoReserva.NO_SHOW);
 
     private final PromocionCanchaService promocionCanchaService;
+    private final PoliticaSenia politicaSenia;
     private final CanchaRepository canchaRepository;
     private final HorarioCanchaRepository horarioCanchaRepository;
     private final ReservaRepository reservaRepository;
@@ -104,10 +113,7 @@ public class DisponibilidadCanchaService {
 
         LocalTime apertura = horario.getHoraApertura();
         LocalDateTime inicioSesion = fecha.atTime(apertura);
-        LocalDateTime finSesion = fecha.atTime(horario.getHoraCierre());
-        if (!finSesion.isAfter(inicioSesion)) {
-            finSesion = finSesion.plusDays(1);
-        }
+        LocalDateTime finSesion = finDeSesion(fecha, apertura, horario.getHoraCierre());
 
         List<Intervalo> ocupaciones = ocupaciones(canchaId, fecha, apertura, inicioSesion, finSesion, null);
         List<SlotDisponibilidad> slots = new ArrayList<>();
@@ -161,10 +167,7 @@ public class DisponibilidadCanchaService {
 
         LocalTime apertura = horario.getHoraApertura();
         LocalDateTime inicioSesion = fecha.atTime(apertura);
-        LocalDateTime finSesion = fecha.atTime(horario.getHoraCierre());
-        if (!finSesion.isAfter(inicioSesion)) {
-            finSesion = finSesion.plusDays(1);
-        }
+        LocalDateTime finSesion = finDeSesion(fecha, apertura, horario.getHoraCierre());
 
         List<Intervalo> ocupaciones = ocupaciones(canchaId, fecha, apertura, inicioSesion, finSesion, null);
         LocalDateTime ahora = LocalDateTime.now();
@@ -225,6 +228,9 @@ public class DisponibilidadCanchaService {
                                 .canchaId(cancha.getId())
                                 .canchaNombre(cancha.getNombre())
                                 .tipo(cancha.getDescripcion())
+                                // Ya resuelto: la pantalla muestra el porcentaje que se va
+                                // a cobrar, no el que quedó cargado (que puede ser nulo).
+                                .seniaPorcentaje(politicaSenia.porcentaje(cancha.getSeniaPorcentaje()))
                                 .opciones(slot.getOpciones())
                                 .build());
             }
@@ -399,10 +405,7 @@ public class DisponibilidadCanchaService {
                 continue;
             }
             LocalDateTime apertura = dia.atTime(horario.getHoraApertura());
-            LocalDateTime cierre = dia.atTime(horario.getHoraCierre());
-            if (!cierre.isAfter(apertura)) {
-                cierre = cierre.plusDays(1);
-            }
+            LocalDateTime cierre = finDeSesion(dia, horario.getHoraApertura(), horario.getHoraCierre());
             if (desde.isBefore(apertura)) {
                 return apertura;
             }
@@ -414,21 +417,50 @@ public class DisponibilidadCanchaService {
     }
 
     /**
-     * Fecha de la jornada que el club está atendiendo ahora. Antes de la apertura la
+     * Fecha de la jornada que el club está atendiendo ahora. Después de medianoche la
      * sesión viva es la que arrancó ayer: a la 1 AM hay gente en la cancha anotada con la
      * fecha de ayer, y preguntar por "hoy" devolvía el día que todavía no empezó.
+     *
+     * <p>Esa sesión se termina cuando el club <b>cierra</b>, no cuando vuelve a abrir.
+     * Mirando solo la apertura, un club que cierra a las 2 y abre a las 10 se pasaba ocho
+     * horas mostrando en el panel el día anterior, con el cartel de "sigue abierta la
+     * noche de ayer" puesto a las 4 de la mañana, cuando ya no había nadie.
      */
     public LocalDate fechaDeJornadaActual() {
-        LocalDateTime ahora = LocalDateTime.now();
+        LocalDateTime ahora = ahora();
+        LocalDate ayer = ahora.toLocalDate().minusDays(1);
         // Solo cuentan las canchas con horario cargado: una sin configurar devolvía las
         // 00:00 y tiraba la apertura de referencia a medianoche, con lo que la jornada
         // pasaba a ser siempre la de hoy y el arreglo no servía para nada.
-        LocalTime apertura = canchaRepository.findByActivoTrue().stream()
-                .map(cancha -> aperturaConfigurada(cancha.getId()))
-                .filter(java.util.Objects::nonNull)
-                .min(LocalTime::compareTo)
-                .orElse(LocalTime.MIN);
-        return ahora.toLocalTime().isBefore(apertura) ? ahora.toLocalDate().minusDays(1) : ahora.toLocalDate();
+        return horarioCanchaRepository.findVigentesDeCanchasActivas().stream()
+                .filter(horario -> horario.getHoraApertura() != null && horario.getHoraCierre() != null)
+                .filter(horario -> diaActivo(horario.getDiasActivos(), ayer))
+                .map(horario -> finDeSesion(ayer, horario.getHoraApertura(), horario.getHoraCierre())
+                        .plusMinutes(MARGEN_CIERRE_JORNADA_MIN))
+                .max(LocalDateTime::compareTo)
+                .filter(ahora::isBefore)
+                .map(finDeAnoche -> ayer)
+                .orElse(ahora.toLocalDate());
+    }
+
+    /**
+     * Momento en que termina la sesión que arranca el {@code fecha}. Un club que cierra a
+     * las 2 termina de madrugada: el cierre se ubica en la línea de tiempo real, nunca
+     * comparando horas sueltas contra el reloj.
+     */
+    private LocalDateTime finDeSesion(LocalDate fecha, LocalTime apertura, LocalTime cierre) {
+        LocalDateTime inicio = fecha.atTime(apertura);
+        LocalDateTime fin = fecha.atTime(cierre);
+        return fin.isAfter(inicio) ? fin : fin.plusDays(1);
+    }
+
+    /**
+     * Punto único de "ahora" para la jornada. Existe para poder fijar la hora en los
+     * tests: el bug de la jornada solo se reproducía entre el cierre y la apertura, y un
+     * test atado al reloj de la máquina solo lo habría visto de madrugada.
+     */
+    LocalDateTime ahora() {
+        return LocalDateTime.now();
     }
 
     private LocalTime aperturaActiva(Long canchaId) {
@@ -477,15 +509,34 @@ public class DisponibilidadCanchaService {
         // sobre la línea de tiempo real, no contra el reloj.
         LocalTime apertura = horario.getHoraApertura();
         LocalDateTime inicioSesion = fecha.atTime(apertura);
-        LocalDateTime finSesion = fecha.atTime(horario.getHoraCierre());
-        if (!finSesion.isAfter(inicioSesion)) {
-            finSesion = finSesion.plusDays(1);
-        }
+        LocalDateTime finSesion = finDeSesion(fecha, apertura, horario.getHoraCierre());
         LocalDateTime inicio = aDateTime(fecha, horaInicio, apertura);
         if (inicio.isBefore(inicioSesion) || inicio.plusMinutes(duracionMin).isAfter(finSesion)) {
             throw new EstadoInvalidoException("El club atiende de " + apertura + " a "
                     + horario.getHoraCierre() + ". El turno tiene que entrar completo en ese horario.");
         }
+    }
+
+    /**
+     * El horario de atención de la cancha, o null si todavía no tiene uno cargado. Público
+     * para que la grilla de abonos libres lea la misma apertura y los mismos días que la
+     * grilla de turnos, y no aparezca como vendible una hora que el club no atiende.
+     */
+    public HorarioCancha horarioDe(Long canchaId) {
+        return horarioActivo(canchaId);
+    }
+
+    /** Si el club atiende ese día de la semana (ISO: 1 = lunes ... 7 = domingo). */
+    public boolean atiendeElDia(HorarioCancha horario, int diaSemanaIso) {
+        if (horario.getDiasActivos() == null || horario.getDiasActivos().isBlank()) {
+            return true;
+        }
+        for (String token : horario.getDiasActivos().split(",")) {
+            if (token.trim().equals(String.valueOf(diaSemanaIso))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private HorarioCancha horarioActivo(Long canchaId) {

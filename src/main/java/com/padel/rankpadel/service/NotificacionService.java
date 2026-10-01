@@ -15,6 +15,7 @@ import com.padel.rankpadel.entity.Reserva;
 import com.padel.rankpadel.entity.SolicitudInscripcion;
 import com.padel.rankpadel.exception.EstadoInvalidoException;
 import com.padel.rankpadel.repository.ConfiguracionSedeRepository;
+import com.padel.rankpadel.util.MontosReserva;
 
 import lombok.RequiredArgsConstructor;
 
@@ -70,6 +71,141 @@ public class NotificacionService {
 
         emailSender.enviar(destino,
                 "Nuevo turno pedido — " + reserva.getClienteNombre(), cuerpo);
+    }
+
+    /**
+     * Aviso al CLUB de que un jugador canceló desde su enlace.
+     *
+     * <p>Sin esto, la cancha se libera y nadie se entera: el club sigue creyendo que esa
+     * hora está vendida y no la ofrece. Va con la seña, porque si había plata cobrada
+     * alguien tiene que decidir qué hacer con ella.
+     */
+    @Transactional(readOnly = true)
+    public void avisarCancelacionDelJugador(Reserva reserva) {
+        String destino = destino();
+        if (destino == null || reserva == null) {
+            return;
+        }
+        String cuerpo = """
+                Un jugador canceló su turno desde la web. La cancha quedó libre.
+
+                Cancha:   %s
+                Día:      %s de %s a %s
+                Cliente:  %s
+                Teléfono: %s
+                Código:   %s
+                Seña cobrada: %s
+
+                Si había seña, el sistema NO la devuelve solo.
+                """.formatted(
+                nombreCancha(reserva),
+                reserva.getFecha() != null ? reserva.getFecha().format(FECHA) : "-",
+                reserva.getHoraInicio() != null ? reserva.getHoraInicio().format(HORA) : "-",
+                reserva.getHoraFin() != null ? reserva.getHoraFin().format(HORA) : "-",
+                reserva.getClienteNombre(),
+                reserva.getClienteTelefono(),
+                reserva.getCodigo(),
+                MontosReserva.seniaPagada(reserva).compareTo(java.math.BigDecimal.ZERO) > 0
+                        ? "$" + MontosReserva.seniaPagada(reserva)
+                        : "no");
+
+        emailSender.enviar(destino,
+                "Turno cancelado por el jugador — " + reserva.getClienteNombre(), cuerpo);
+    }
+
+    /**
+     * Comprobante para el JUGADOR, con el enlace de su turno.
+     *
+     * <p>Es el primer aviso que el sistema le manda a alguien que no es del club. Hasta
+     * acá, el que reservaba se quedaba con un código en la pantalla: si cerraba la pestaña
+     * no le quedaba nada, y para cualquier cosa tenía que llamar.
+     */
+    @Transactional(readOnly = true)
+    public void enviarComprobanteAlJugador(Reserva reserva, String enlace) {
+        String destino = mailDelJugador(reserva);
+        if (destino == null) {
+            return;
+        }
+        String cuerpo = """
+                %s, tu turno quedó anotado.
+
+                Cancha: %s
+                Día:    %s de %s a %s
+                Código: %s
+                Estado: %s
+
+                Podés ver o cancelar tu turno desde acá:
+                %s
+
+                Guardá este mail: es tu comprobante.
+                """.formatted(
+                reserva.getClienteNombre(),
+                nombreCancha(reserva),
+                reserva.getFecha() != null ? reserva.getFecha().format(FECHA) : "-",
+                reserva.getHoraInicio() != null ? reserva.getHoraInicio().format(HORA) : "-",
+                reserva.getHoraFin() != null ? reserva.getHoraFin().format(HORA) : "-",
+                reserva.getCodigo(),
+                estadoLegible(reserva),
+                enlace);
+
+        emailSender.enviar(destino, "Tu turno — " + nombreCancha(reserva), cuerpo);
+    }
+
+    /** Recordatorio del turno de mañana, al jugador que dejó su mail. */
+    @Transactional(readOnly = true)
+    public void recordarTurnoAlJugador(Reserva reserva, String enlace) {
+        String destino = mailDelJugador(reserva);
+        if (destino == null) {
+            return;
+        }
+        String cuerpo = """
+                %s, te recordamos tu turno.
+
+                Cancha: %s
+                Día:    %s a las %s
+                Código: %s
+
+                Si no vas a poder venir, avisanos desde acá:
+                %s
+                """.formatted(
+                reserva.getClienteNombre(),
+                nombreCancha(reserva),
+                reserva.getFecha() != null ? reserva.getFecha().format(FECHA) : "-",
+                reserva.getHoraInicio() != null ? reserva.getHoraInicio().format(HORA) : "-",
+                reserva.getCodigo(),
+                enlace);
+
+        emailSender.enviar(destino, "Recordatorio de tu turno", cuerpo);
+    }
+
+    /**
+     * A dónde escribirle al jugador: primero lo que dejó al reservar (que es de ese día) y
+     * si no, lo que tenga la ficha. Sin mail no se manda nada y no pasa nada: reservar
+     * nunca lo exigió.
+     */
+    private String mailDelJugador(Reserva reserva) {
+        if (reserva == null) {
+            return null;
+        }
+        if (reserva.getClienteEmail() != null && !reserva.getClienteEmail().isBlank()) {
+            return reserva.getClienteEmail().trim();
+        }
+        if (reserva.getCliente() != null && reserva.getCliente().getEmail() != null
+                && !reserva.getCliente().getEmail().isBlank()) {
+            return reserva.getCliente().getEmail().trim();
+        }
+        return null;
+    }
+
+    private String estadoLegible(Reserva reserva) {
+        if (reserva.getEstado() == null) {
+            return "-";
+        }
+        return switch (reserva.getEstado()) {
+            case PENDIENTE -> "a confirmar por el club";
+            case CONFIRMADA -> "confirmado";
+            default -> reserva.getEstado().name().toLowerCase();
+        };
     }
 
     @Transactional(readOnly = true)

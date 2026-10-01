@@ -30,6 +30,12 @@ public class ReservaResponse {
     private String clienteNombre;
     private String clienteTelefono;
     private String codigo;
+    /**
+     * Token del enlace del jugador. Viaja porque la propia pantalla de reserva le tiene
+     * que dar el link apenas termina: si cierra la pestaña sin haber dejado mail, es lo
+     * único con lo que puede volver a su turno.
+     */
+    private String tokenPublico;
     private String estadoPago;
     private BigDecimal montoSenia;
     private BigDecimal montoTotal;

@@ -49,6 +49,13 @@ public class DisponibilidadSedeResponse {
         private String canchaNombre;
         /** "Techada" / "Descubierta", para que el jugador elija con criterio. */
         private String tipo;
+        /**
+         * Qué parte del turno se paga como seña, en porcentaje. Viaja hasta el jugador
+         * porque la pantalla de reserva le anuncia el monto ANTES de mandarlo a pagar: con
+         * un 50 fijo en el front, una cancha configurada al 30 mostraba una cifra y Mercado
+         * Pago cobraba otra. El que manda es el de la cancha (ver PagoService).
+         */
+        private Integer seniaPorcentaje;
         private List<OpcionDuracion> opciones;
     }
 }

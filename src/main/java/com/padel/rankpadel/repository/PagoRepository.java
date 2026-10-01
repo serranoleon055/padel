@@ -17,5 +17,10 @@ public interface PagoRepository extends JpaRepository<Pago, Long> {
 
     List<Pago> findByEstadoAndPagadoEnAfter(EstadoPago estado, LocalDateTime desde);
 
-    List<Pago> findByEstadoAndPagadoEnBetween(EstadoPago estado, LocalDateTime desde, LocalDateTime hasta);
+    /**
+     * Las señas acreditadas en una jornada del club. Por jornada y no por día de
+     * calendario, para que el arqueo de la noche cuadre con lo que cobró el mostrador
+     * (ver V55).
+     */
+    List<Pago> findByEstadoAndJornada(EstadoPago estado, java.time.LocalDate jornada);
 }

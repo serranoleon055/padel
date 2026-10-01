@@ -1,6 +1,7 @@
 package com.padel.rankpadel.entity;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 import com.padel.rankpadel.enums.MedioPago;
@@ -49,6 +50,14 @@ public class Cobro {
     private MedioPago medio;
 
     private LocalDateTime cobradoEn;
+
+    /**
+     * Jornada del club a la que pertenece esta plata. No es la fecha de calendario: un
+     * cobro de la 1 AM es de la noche que arrancó ayer, y tiene que estar en ESE arqueo,
+     * que es el que se firma cuando se cuenta el cajón. Se estampa al cobrar y no se
+     * recalcula nunca (ver V55).
+     */
+    private LocalDate jornada;
 
     /** Usuario del panel que lo registró: si falta plata hay que saber quién cobró. */
     private String registradoPor;

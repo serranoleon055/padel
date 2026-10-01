@@ -50,9 +50,14 @@ class CobroServiceTest {
     private VentaRepository ventaRepository;
     @Mock
     private CajaCerradaGuard cajaCerradaGuard;
+    @Mock
+    private DisponibilidadCanchaService disponibilidadCanchaService;
 
     @InjectMocks
     private CobroService cobroService;
+
+    /** La noche del sábado. Lo cobrado a la 1 AM del domingo sigue siendo de esta jornada. */
+    private static final LocalDate JORNADA = LocalDate.of(2026, 8, 15);
 
     private final Cancha cancha = Cancha.builder().id(1L).nombre("Cancha 1").build();
 
@@ -61,6 +66,7 @@ class CobroServiceTest {
         lenient().when(cobroRepository.save(any(Cobro.class))).thenAnswer(i -> i.getArgument(0));
         // Sin consumo anotado: el saldo del turno es solo la cancha.
         lenient().when(ventaRepository.consumoACuentaDe(anyList())).thenReturn(List.of());
+        lenient().when(disponibilidadCanchaService.fechaDeJornadaActual()).thenReturn(JORNADA);
     }
 
     /** Turno de $20.000 con seña online del 50% ya aprobada: quedan $10.000 por cobrar. */
@@ -94,6 +100,23 @@ class CobroServiceTest {
         verify(cobroRepository).save(guardado.capture());
         assertThat(guardado.getValue().getMonto()).isEqualByComparingTo("10000.00");
         assertThat(guardado.getValue().getMedio()).isEqualTo(MedioPago.EFECTIVO);
+    }
+
+    @Test
+    @DisplayName("El cobro queda en la jornada del club, no en el día de calendario")
+    void cobra_seEstampaConLaJornada() {
+        when(reservaRepository.findById(4L)).thenReturn(Optional.of(turnoConSenia(EstadoReserva.FINALIZADA)));
+        when(cobroRepository.totalCobradoDe(4L)).thenReturn(BigDecimal.ZERO);
+
+        cobroService.registrar(4L, cobroDe("10000.00"));
+
+        ArgumentCaptor<Cobro> guardado = ArgumentCaptor.forClass(Cobro.class);
+        verify(cobroRepository).save(guardado.capture());
+        // Sin esto, lo cobrado después de medianoche caía en la caja del día siguiente y
+        // el arqueo de la noche —el que se firma contando el cajón— salía incompleto.
+        assertThat(guardado.getValue().getJornada()).isEqualTo(JORNADA);
+        // Y el día que se bloquea al cerrar la caja es esa misma jornada.
+        verify(cajaCerradaGuard).exigirDiaAbierto(JORNADA);
     }
 
     @Test

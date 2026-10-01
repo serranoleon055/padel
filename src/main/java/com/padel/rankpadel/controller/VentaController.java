@@ -43,7 +43,9 @@ public class VentaController {
     @GetMapping("/ventas")
     public ResponseEntity<List<VentaResponse>> listarDelDia(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha) {
-        return ResponseEntity.ok(ventaService.listarDelDia(fecha != null ? fecha : LocalDate.now()));
+        // Sin fecha, la jornada en curso: a las 00:30 lo vendido esta noche está anotado
+        // en la sesión de ayer, no en el día que recién empieza.
+        return ResponseEntity.ok(ventaService.listarDelDia(fecha != null ? fecha : ventaService.jornadaActual()));
     }
 
     @GetMapping("/reservas/{reservaId}/ventas")

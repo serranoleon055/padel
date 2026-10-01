@@ -47,6 +47,9 @@ public class ConfiguracionSedeService {
         configuracion.setFacebook(dto.getFacebook());
         configuracion.setDireccion(dto.getDireccion());
         configuracion.setMapsEmbedUrl(mapsEmbedResolver.resolver(dto.getMapsEmbedUrl()));
+        if (dto.getCancelacionHorasMinimas() != null) {
+            configuracion.setCancelacionHorasMinimas(Math.max(0, dto.getCancelacionHorasMinimas()));
+        }
         configuracion.setHorariosJson(aJson(dto.getHorarios()));
         configuracion.setGaleriaJson(aJson(dto.getGaleria()));
         configuracion.setFormasPagoJson(aJson(dto.getFormasPago()));
@@ -66,12 +69,32 @@ public class ConfiguracionSedeService {
                 .facebook(configuracion.getFacebook())
                 .direccion(configuracion.getDireccion())
                 .mapsEmbedUrl(configuracion.getMapsEmbedUrl())
+                .cancelacionHorasMinimas(horasMinimasCancelacion(configuracion))
                 .horarios(desdeJson(configuracion.getHorariosJson(), new TypeReference<List<ConfiguracionSedeDto.HorarioSede>>() {}))
                 .galeria(desdeJson(configuracion.getGaleriaJson(), new TypeReference<List<ConfiguracionSedeDto.FotoSede>>() {}))
                 .formasPago(desdeJson(configuracion.getFormasPagoJson(), new TypeReference<List<String>>() {}))
                 .mercadoPagoConfigurado(configuracion.getMercadoPagoAccessToken() != null
                         && !configuracion.getMercadoPagoAccessToken().isBlank())
                 .build();
+    }
+
+    /**
+     * Cuántas horas antes del turno se corta la cancelación por internet. Lo usa el
+     * endpoint público del jugador; la configuración es una sola fila, así que se lee de
+     * la entidad y no del DTO.
+     */
+    @Transactional(readOnly = true)
+    public int horasMinimasCancelacion() {
+        return horasMinimasCancelacion(configuracionSedeRepository.findById(ID).orElseGet(ConfiguracionSede::new));
+    }
+
+    private int horasMinimasCancelacion(ConfiguracionSede configuracion) {
+        // Una fila vieja, de antes de V56, puede tener el campo nulo: se toma el mismo
+        // valor por defecto que la migración, y no cero, que apagaría la cancelación sin
+        // que el club lo haya decidido.
+        return configuracion.getCancelacionHorasMinimas() != null
+                ? configuracion.getCancelacionHorasMinimas()
+                : 12;
     }
 
     private String aJson(Object valor) {

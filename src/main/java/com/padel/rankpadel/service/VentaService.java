@@ -49,10 +49,14 @@ public class VentaService {
     private final CobroRepository cobroRepository;
     private final ProductoService productoService;
     private final CajaCerradaGuard cajaCerradaGuard;
+    private final DisponibilidadCanchaService disponibilidadCanchaService;
 
     @Transactional
     public VentaResponse registrar(VentaRequest request) {
-        cajaCerradaGuard.exigirDiaAbierto(LocalDate.now());
+        // A la jornada del club, no al día de calendario: lo vendido a la 1 AM es de la
+        // noche que arrancó ayer y va en ese arqueo (ver V55).
+        LocalDate jornada = disponibilidadCanchaService.fechaDeJornadaActual();
+        cajaCerradaGuard.exigirDiaAbierto(jornada);
         Reserva reserva = reserva(request.getReservaId());
         // Sin medio de pago la venta va a la cuenta del turno y se cobra al final, junto
         // con la cancha. Sin turno tampoco, sería plata que se pierde de vista.
@@ -73,6 +77,7 @@ public class VentaService {
 
         Venta venta = Venta.builder()
                 .fecha(LocalDateTime.now())
+                .jornada(jornada)
                 .medio(request.getMedio())
                 .cliente(cliente)
                 .reserva(reserva)
@@ -119,11 +124,16 @@ public class VentaService {
     }
 
     @Transactional(readOnly = true)
-    public List<VentaResponse> listarDelDia(LocalDate fecha) {
-        return ventaRepository
-                .findDelDiaConItems(fecha.atStartOfDay(), fecha.plusDays(1).atStartOfDay()).stream()
+    public List<VentaResponse> listarDelDia(LocalDate jornada) {
+        return ventaRepository.findDeLaJornadaConItems(jornada).stream()
                 .map(this::aResponse)
                 .toList();
+    }
+
+    /** La jornada que el club está atendiendo: la que abre el mostrador si no elige otra. */
+    @Transactional(readOnly = true)
+    public LocalDate jornadaActual() {
+        return disponibilidadCanchaService.fechaDeJornadaActual();
     }
 
     @Transactional(readOnly = true)
@@ -149,7 +159,7 @@ public class VentaService {
         if (venta.estaAnulada()) {
             throw new EstadoInvalidoException("Esa venta ya está anulada");
         }
-        cajaCerradaGuard.exigirDiaAbierto(venta.getFecha().toLocalDate());
+        cajaCerradaGuard.exigirDiaAbierto(venta.getJornada());
         if (!confirmado && yaSeCobro(venta)) {
             throw new EstadoInvalidoException(
                     "Este consumo ya se cobró junto con el turno. Si lo anulás, la plata cobrada"

@@ -47,6 +47,7 @@ public class ReservaMapper {
                 .clienteNombre(reserva.getClienteNombre())
                 .clienteTelefono(reserva.getClienteTelefono())
                 .codigo(reserva.getCodigo())
+                .tokenPublico(reserva.getTokenPublico())
                 .estadoPago(pago != null && pago.getEstado() != null ? pago.getEstado().name() : null)
                 .montoSenia(pago != null ? pago.getMontoSenia() : null)
                 .montoTotal(pago != null ? pago.getMontoTotal() : null)

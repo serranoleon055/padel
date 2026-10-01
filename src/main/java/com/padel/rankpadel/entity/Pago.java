@@ -1,6 +1,7 @@
 package com.padel.rankpadel.entity;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 import com.padel.rankpadel.enums.ConceptoPago;
@@ -53,4 +54,12 @@ public class Pago {
     private String clienteTelefono;
     private LocalDateTime creadoEn;
     private LocalDateTime pagadoEn;
+
+    /**
+     * Jornada del club en que se acreditó la seña. Null mientras el pago está pendiente:
+     * todavía no entró a ninguna caja. Se estampa al aprobarlo, junto con
+     * {@link #pagadoEn}, para que la seña de la 1 AM se cuente en el arqueo de esa noche
+     * y no en el del día siguiente (ver V55).
+     */
+    private LocalDate jornada;
 }

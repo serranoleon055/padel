@@ -20,27 +20,30 @@ import com.padel.rankpadel.entity.Venta;
 public interface VentaRepository extends JpaRepository<Venta, Long> {
 
     /**
-     * Ventas del día con sus renglones y productos ya cargados: la caja las lista con el
-     * detalle y no puede disparar una consulta por venta.
+     * Ventas de una jornada con sus renglones y productos ya cargados: la caja las lista
+     * con el detalle y no puede disparar una consulta por venta.
+     *
+     * <p>Por jornada, no por día de calendario: lo vendido a la 1 AM es de la noche que
+     * arrancó ayer y va en ese arqueo. Ver V55.
      */
     @Query("""
         SELECT DISTINCT v FROM Venta v
         LEFT JOIN FETCH v.items i
         LEFT JOIN FETCH i.producto
-        WHERE v.fecha >= :desde AND v.fecha < :hasta AND v.anuladoEn IS NULL
+        WHERE v.jornada = :jornada AND v.anuladoEn IS NULL
         ORDER BY v.fecha
         """)
-    List<Venta> findDelDiaConItems(@Param("desde") LocalDateTime desde, @Param("hasta") LocalDateTime hasta);
+    List<Venta> findDeLaJornadaConItems(@Param("jornada") LocalDate jornada);
 
-    /** Las anuladas del día, para la solapa de anulados del cierre. */
+    /** Las anuladas de la jornada, para la solapa de anulados del cierre. */
     @Query("""
         SELECT DISTINCT v FROM Venta v
         LEFT JOIN FETCH v.items i
         LEFT JOIN FETCH i.producto
-        WHERE v.fecha >= :desde AND v.fecha < :hasta AND v.anuladoEn IS NOT NULL
+        WHERE v.jornada = :jornada AND v.anuladoEn IS NOT NULL
         ORDER BY v.fecha
         """)
-    List<Venta> findAnuladasDelDia(@Param("desde") LocalDateTime desde, @Param("hasta") LocalDateTime hasta);
+    List<Venta> findAnuladasDeLaJornada(@Param("jornada") LocalDate jornada);
 
     @Query("SELECT COALESCE(SUM(v.total), 0) FROM Venta v "
             + "WHERE v.fecha >= :desde AND v.fecha < :hasta AND v.anuladoEn IS NULL")

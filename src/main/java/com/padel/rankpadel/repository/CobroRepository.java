@@ -1,7 +1,7 @@
 package com.padel.rankpadel.repository;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.LocalDate;
 import java.util.List;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -35,24 +35,28 @@ public interface CobroRepository extends JpaRepository<Cobro, Long> {
             + "GROUP BY c.reserva.id")
     List<TotalPorReserva> totalesPorReserva(@Param("reservaIds") List<Long> reservaIds);
 
+    /**
+     * Los cobros de una jornada, que NO es un día de calendario: lo cobrado a la 1 AM
+     * pertenece a la noche que arrancó ayer y va en ese arqueo. Ver V55.
+     */
     @Query("""
         SELECT c FROM Cobro c
         JOIN FETCH c.reserva r
         LEFT JOIN FETCH r.cancha
-        WHERE c.cobradoEn >= :desde AND c.cobradoEn < :hasta AND c.anuladoEn IS NULL
+        WHERE c.jornada = :jornada AND c.anuladoEn IS NULL
         ORDER BY c.cobradoEn
         """)
-    List<Cobro> findDelDia(@Param("desde") LocalDateTime desde, @Param("hasta") LocalDateTime hasta);
+    List<Cobro> findDeLaJornada(@Param("jornada") LocalDate jornada);
 
-    /** Los anulados del día, para que el cierre pueda mostrarlos aparte. */
+    /** Los anulados de la jornada, para que el cierre pueda mostrarlos aparte. */
     @Query("""
         SELECT c FROM Cobro c
         JOIN FETCH c.reserva r
         LEFT JOIN FETCH r.cancha
-        WHERE c.cobradoEn >= :desde AND c.cobradoEn < :hasta AND c.anuladoEn IS NOT NULL
+        WHERE c.jornada = :jornada AND c.anuladoEn IS NOT NULL
         ORDER BY c.cobradoEn
         """)
-    List<Cobro> findAnuladosDelDia(@Param("desde") LocalDateTime desde, @Param("hasta") LocalDateTime hasta);
+    List<Cobro> findAnuladosDeLaJornada(@Param("jornada") LocalDate jornada);
 
     interface TotalPorReserva {
         Long getReservaId();

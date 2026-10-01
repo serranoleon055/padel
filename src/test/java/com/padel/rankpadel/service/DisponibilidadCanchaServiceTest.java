@@ -3,9 +3,11 @@ package com.padel.rankpadel.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.entry;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.when;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
 
@@ -14,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.padel.rankpadel.dto.response.DisponibilidadSedeResponse;
@@ -46,28 +49,60 @@ class DisponibilidadCanchaServiceTest {
     private CanchaRepository canchaRepository;
     @Mock
     private PromocionCanchaService promocionCanchaService;
+    @Mock
+    private PoliticaSenia politicaSenia;
 
+    // Spy para poder fijar la hora: la jornada solo se rompe entre el cierre y la
+    // apertura, y atada al reloj de la máquina la prueba solo valdría de madrugada.
+    @Spy
     @InjectMocks
     private DisponibilidadCanchaService service;
 
-    @Test
-    @DisplayName("Una cancha sin horario cargado no arrastra la jornada a medianoche")
-    void fechaDeJornadaActual_ignoraLasCanchasSinHorario() {
-        Cancha conHorario = Cancha.builder().id(1L).nombre("Cancha 1").build();
-        Cancha sinHorario = Cancha.builder().id(2L).nombre("Cancha 2").build();
-
-        when(canchaRepository.findByActivoTrue()).thenReturn(List.of(conHorario, sinHorario));
-        when(horarioCanchaRepository.findByCanchaIdAndActivoTrue(1L)).thenReturn(List.of(HorarioCancha.builder()
+    /** Club de referencia: abre a las 10 y cierra a las 2 de la madrugada siguiente. */
+    private HorarioCancha horarioDeNoche() {
+        return HorarioCancha.builder()
                 .horaApertura(LocalTime.of(10, 0)).horaCierre(LocalTime.of(2, 0))
-                .duracionesOfrecidas("60").anticipacionDias(14).activo(true).build()));
-        when(horarioCanchaRepository.findByCanchaIdAndActivoTrue(2L)).thenReturn(List.of());
+                .duracionesOfrecidas("60").anticipacionDias(14).activo(true).build();
+    }
 
-        // La cancha sin configurar devolvía las 00:00 como apertura y hacía que la
-        // jornada fuera siempre la de hoy, incluso a las 3 de la mañana.
-        LocalDate esperada = LocalTime.now().isBefore(LocalTime.of(10, 0))
-                ? LocalDate.now().minusDays(1)
-                : LocalDate.now();
-        assertThat(service.fechaDeJornadaActual()).isEqualTo(esperada);
+    @Test
+    @DisplayName("A la 1 AM la jornada sigue siendo la noche que arrancó ayer")
+    void fechaDeJornadaActual_despuesDeMedianocheSigueLaNocheDeAyer() {
+        doReturn(LocalDateTime.of(2026, 8, 14, 1, 0)).when(service).ahora();
+        // Solo devuelve horarios cargados: una cancha sin configurar ya no puede tirar la
+        // apertura de referencia a las 00:00 y hacer que la jornada sea siempre la de hoy.
+        when(horarioCanchaRepository.findVigentesDeCanchasActivas()).thenReturn(List.of(horarioDeNoche()));
+
+        assertThat(service.fechaDeJornadaActual()).isEqualTo(LocalDate.of(2026, 8, 13));
+    }
+
+    @Test
+    @DisplayName("Sin ningún horario cargado, la jornada es el día de hoy")
+    void fechaDeJornadaActual_sinHorarios_esHoy() {
+        doReturn(LocalDateTime.of(2026, 8, 14, 1, 0)).when(service).ahora();
+        when(horarioCanchaRepository.findVigentesDeCanchasActivas()).thenReturn(List.of());
+
+        assertThat(service.fechaDeJornadaActual()).isEqualTo(LocalDate.of(2026, 8, 14));
+    }
+
+    @Test
+    @DisplayName("Cerrado el club, la jornada de anoche deja de ser la actual")
+    void fechaDeJornadaActual_despuesDelCierreEsElDiaNuevo() {
+        // 4 de la mañana: el club cerró a las 2 y no hay nadie. El panel mostraba el
+        // día anterior y avisaba "sigue abierta la noche de ayer" hasta las 10.
+        doReturn(LocalDateTime.of(2026, 8, 14, 4, 0)).when(service).ahora();
+        when(horarioCanchaRepository.findVigentesDeCanchasActivas()).thenReturn(List.of(horarioDeNoche()));
+
+        assertThat(service.fechaDeJornadaActual()).isEqualTo(LocalDate.of(2026, 8, 14));
+    }
+
+    @Test
+    @DisplayName("Recién cerrado, la jornada sigue siendo la de anoche para terminar de cobrar")
+    void fechaDeJornadaActual_mantieneLaNocheMientrasSeCierraLaCaja() {
+        doReturn(LocalDateTime.of(2026, 8, 14, 2, 30)).when(service).ahora();
+        when(horarioCanchaRepository.findVigentesDeCanchasActivas()).thenReturn(List.of(horarioDeNoche()));
+
+        assertThat(service.fechaDeJornadaActual()).isEqualTo(LocalDate.of(2026, 8, 13));
     }
 
     @Test
@@ -92,6 +127,32 @@ class DisponibilidadCanchaServiceTest {
 
         assertThat(horarios.get(0)).isEqualTo(LocalTime.of(10, 0));
         assertThat(horarios).endsWith(LocalTime.of(0, 0), LocalTime.of(1, 0));
+    }
+
+    @Test
+    @DisplayName("La grilla pública informa la seña que se va a cobrar, no un 50 fijo")
+    void disponibilidadSede_llevaElPorcentajeDeSenia() {
+        LocalDate fecha = LocalDate.now().plusDays(1);
+        HorarioCancha horario = HorarioCancha.builder()
+                .horaApertura(LocalTime.of(18, 0)).horaCierre(LocalTime.of(20, 0))
+                .duracionesOfrecidas("60").anticipacionDias(14).diasActivos(null).activo(true).build();
+        Cancha cancha = Cancha.builder().id(1L).nombre("Cancha 1")
+                .seniaPorcentaje(30)
+                .precioPorHora(new java.math.BigDecimal("10000")).build();
+
+        when(canchaRepository.findByLugarIdAndActivoTrue(7L)).thenReturn(List.of(cancha));
+        when(horarioCanchaRepository.findByCanchaIdAndActivoTrue(1L)).thenReturn(List.of(horario));
+        when(reservaRepository.findByCanchaIdAndFecha(1L, fecha)).thenReturn(List.of());
+        when(bloqueoCanchaRepository.findByCanchaId(1L)).thenReturn(List.of());
+        when(partidoRepository.findByCanchaIdAndFechaHoraProgramadaBetween(any(), any(), any())).thenReturn(List.of());
+        when(politicaSenia.porcentaje(30)).thenReturn(30);
+
+        // El front lo tenía escrito en 50: una cancha al 30% anunciaba una seña y Mercado
+        // Pago cobraba otra. El porcentaje viaja con la cancha y ya resuelto.
+        assertThat(service.disponibilidadSede(7L, fecha).getFranjas())
+                .flatExtracting(DisponibilidadSedeResponse.FranjaSede::getCanchas)
+                .extracting(DisponibilidadSedeResponse.CanchaLibre::getSeniaPorcentaje)
+                .containsOnly(30);
     }
 
     @Test

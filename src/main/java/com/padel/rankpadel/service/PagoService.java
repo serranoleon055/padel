@@ -54,8 +54,7 @@ public class PagoService {
     private final MercadoPagoService mercadoPagoService;
     private final NotificacionService notificacionService;
 
-    @Value("${app.pagos.porcentaje-senia-default:50}")
-    private int porcentajeSeniaDefault;
+    private final PoliticaSenia politicaSenia;
 
     @Value("${app.pagos.expiracion-pago-minutos:30}")
     private int expiracionPagoMinutos;
@@ -205,6 +204,9 @@ public class PagoService {
         }
         pago.setEstado(EstadoPago.APROBADO);
         pago.setPagadoEn(LocalDateTime.now());
+        // La seña entra al arqueo de la jornada en curso: una acreditada a la 1 AM es de
+        // la noche que arrancó ayer, igual que lo que cobró el mostrador (ver V55).
+        pago.setJornada(disponibilidadCanchaService.fechaDeJornadaActual());
         pago.setPagoMercadoPagoId(pagoMercadoPagoId);
         pagoRepository.save(pago);
 
@@ -216,6 +218,9 @@ public class PagoService {
                     reserva.setEstado(EstadoReserva.CONFIRMADA);
                     reserva.setConfirmadoEn(LocalDateTime.now());
                     reservaRepository.save(reserva);
+                    // Recién ahora el turno es del jugador: es el momento de mandarle el
+                    // comprobante con su enlace.
+                    notificacionService.enviarComprobanteAlJugador(reserva, reservaService.enlaceDelTurno(reserva));
                 } else if (reserva.getEstado() != EstadoReserva.CONFIRMADA
                         && reserva.getEstado() != EstadoReserva.FINALIZADA) {
                     perdidas.add(reserva);
@@ -280,17 +285,15 @@ public class PagoService {
                 .build();
     }
 
+    // La regla del porcentaje vive en PoliticaSenia: la comparte con la grilla pública,
+    // que le anuncia el monto al jugador antes de mandarlo a pagar. Si estuviera duplicada,
+    // el día que cambie una de las dos el cartel diría una cosa y el cobro haría otra.
     private int resolverPorcentajeSenia(Integer porcentajeConfigurado) {
-        int porcentaje = porcentajeConfigurado != null ? porcentajeConfigurado : porcentajeSeniaDefault;
-        if (porcentaje <= 0 || porcentaje > 100) {
-            return porcentajeSeniaDefault;
-        }
-        return porcentaje;
+        return politicaSenia.porcentaje(porcentajeConfigurado);
     }
 
     private BigDecimal calcularSenia(BigDecimal montoTotal, int porcentaje) {
-        return montoTotal.multiply(BigDecimal.valueOf(porcentaje))
-                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+        return politicaSenia.montoSenia(montoTotal, porcentaje);
     }
 
     private PagoResponse aResponse(Pago pago) {

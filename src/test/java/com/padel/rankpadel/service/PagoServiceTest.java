@@ -38,9 +38,22 @@ class PagoServiceTest {
     private ReservaRepository reservaRepository;
     @Mock
     private NotificacionService notificacionService;
+    @Mock
+    private DisponibilidadCanchaService disponibilidadCanchaService;
+    @Mock
+    private ReservaService reservaService;
 
     @InjectMocks
     private PagoService pagoService;
+
+    /** La jornada en que se acredita la seña, que puede no ser el día de calendario. */
+    private static final java.time.LocalDate JORNADA = java.time.LocalDate.of(2026, 8, 15);
+
+    @org.junit.jupiter.api.BeforeEach
+    void fijarJornada() {
+        org.mockito.Mockito.lenient()
+                .when(disponibilidadCanchaService.fechaDeJornadaActual()).thenReturn(JORNADA);
+    }
 
     private Pago pagoReservaPendiente() {
         return Pago.builder()

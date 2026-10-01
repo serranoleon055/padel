@@ -48,10 +48,15 @@ public class CobroService {
     private final ReservaRepository reservaRepository;
     private final VentaRepository ventaRepository;
     private final CajaCerradaGuard cajaCerradaGuard;
+    private final DisponibilidadCanchaService disponibilidadCanchaService;
 
     @Transactional
     public CobroResponse registrar(Long reservaId, CobroRequest request) {
-        cajaCerradaGuard.exigirDiaAbierto(LocalDate.now());
+        // La plata entra a la jornada que el club está atendiendo, no al día de
+        // calendario: lo que se cobra a la 1 AM es de la noche que arrancó ayer y va en
+        // ese arqueo, que es el que se firma cuando se cuenta el cajón (ver V55).
+        LocalDate jornada = disponibilidadCanchaService.fechaDeJornadaActual();
+        cajaCerradaGuard.exigirDiaAbierto(jornada);
         Reserva reserva = reservaRepository.findById(reservaId)
                 .orElseThrow(() -> new ResourceNotFoundException("Reserva", reservaId));
         if (!COBRABLES.contains(reserva.getEstado())) {
@@ -77,6 +82,7 @@ public class CobroService {
                 .monto(request.getMonto())
                 .medio(request.getMedio())
                 .cobradoEn(LocalDateTime.now())
+                .jornada(jornada)
                 .registradoPor(usuarioActual())
                 .notas(request.getNotas())
                 .build());
@@ -103,7 +109,7 @@ public class CobroService {
         if (cobro.estaAnulado()) {
             throw new EstadoInvalidoException("Ese cobro ya está anulado");
         }
-        cajaCerradaGuard.exigirDiaAbierto(cobro.getCobradoEn().toLocalDate());
+        cajaCerradaGuard.exigirDiaAbierto(cobro.getJornada());
 
         cobro.setAnuladoEn(LocalDateTime.now());
         cobro.setAnuladoPor(usuarioActual());

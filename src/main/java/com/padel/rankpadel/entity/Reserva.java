@@ -65,10 +65,23 @@ public class Reserva {
 
     private String clienteNombre;
     private String clienteTelefono;
+    /** Opcional. Si lo dejó, es a donde va el comprobante y el recordatorio. */
+    private String clienteEmail;
+    /** Corto y legible: es el que se dice por teléfono y el que ve el mostrador. */
     private String codigo;
+
+    /**
+     * Lo que autoriza al jugador a ver y cancelar ESTE turno desde el enlace que le llega,
+     * sin cuenta ni contraseña. Va aparte de {@link #codigo} porque el código es corto y se
+     * muestra en las pantallas del club: si fuera el secreto, alcanzaría con ver una
+     * captura para cancelarle el turno a otro.
+     */
+    private String tokenPublico;
     private LocalDateTime creadoEn;
     private LocalDateTime confirmadoEn;
     private LocalDateTime expiraEn;
+    /** Cuándo se le avisó al jugador que se acerca el turno. Null = todavía no. */
+    private LocalDateTime recordatorioEnviadoEn;
 
     /**
      * Bloques de 30 minutos que este turno tiene tomados. Vacío = el horario está libre

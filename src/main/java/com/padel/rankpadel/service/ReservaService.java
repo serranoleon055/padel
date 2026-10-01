@@ -22,6 +22,8 @@ import org.springframework.transaction.annotation.Transactional;
 import com.padel.rankpadel.dto.request.LoteReservaRequest;
 import com.padel.rankpadel.dto.request.SolicitudReservaRequest;
 import com.padel.rankpadel.dto.response.ReservaResponse;
+import com.padel.rankpadel.dto.response.TurnoPublicoResponse;
+import com.padel.rankpadel.util.MontosReserva;
 import com.padel.rankpadel.entity.Cancha;
 import com.padel.rankpadel.entity.Pago;
 import com.padel.rankpadel.entity.Reserva;
@@ -60,6 +62,16 @@ public class ReservaService {
     private final ReservaMapper reservaMapper;
     private final CobroRepository cobroRepository;
     private final VentaRepository ventaRepository;
+    private final ConfiguracionSedeService configuracionSedeService;
+
+    /**
+     * Cuánto tiene que faltar para el turno para que el recordatorio sirva de algo. Menos
+     * que esto y el aviso llega cuando la persona ya no puede avisar que no viene.
+     */
+    private static final int HORAS_MINIMAS_RECORDATORIO = 3;
+
+    @org.springframework.beans.factory.annotation.Value("${app.front.base-url:http://localhost:5173}")
+    private String frontBaseUrl;
 
     @Transactional
     public ReservaResponse solicitar(SolicitudReservaRequest request) {
@@ -68,7 +80,7 @@ public class ReservaService {
         validarTopePendientes(telefono, 1);
         Reserva reserva = crearReserva(cancha, request.getFecha(), request.getHoraInicio(),
                 duracionPedida(cancha, request.getDuracionMin()),
-                request.getClienteNombre(), telefono, null, EXPIRACION_MINUTOS);
+                request.getClienteNombre(), telefono, request.getClienteEmail(), null, EXPIRACION_MINUTOS);
         avisarSiLoPidioUnJugador(reserva);
         return aResponse(reserva);
     }
@@ -80,7 +92,7 @@ public class ReservaService {
         validarTopePendientes(telefono, 1);
         Reserva reserva = crearReserva(cancha, request.getFecha(), request.getHoraInicio(),
                 duracionPedida(cancha, request.getDuracionMin()),
-                request.getClienteNombre(), telefono, null, EXPIRACION_MINUTOS);
+                request.getClienteNombre(), telefono, request.getClienteEmail(), null, EXPIRACION_MINUTOS);
         avisarSiLoPidioUnJugador(reserva);
         return aResponse(reserva);
     }
@@ -95,6 +107,9 @@ public class ReservaService {
         if (!loCargoElClub()) {
             notificacionService.avisarNuevaSolicitudReserva(reserva);
         }
+        // El comprobante va siempre que haya mail, lo haya cargado el club o el jugador:
+        // es lo único que le queda a la persona si cierra la pestaña.
+        notificacionService.enviarComprobanteAlJugador(reserva, enlaceDelTurno(reserva));
     }
 
     /** Si el turno lo está cargando alguien del club desde el panel y no un jugador. */
@@ -111,7 +126,7 @@ public class ReservaService {
         validarTopePendientes(telefono, 1);
         return crearReserva(cancha, request.getFecha(), request.getHoraInicio(),
                 duracionPedida(cancha, request.getDuracionMin()),
-                request.getClienteNombre(), telefono, pago, expiracionMinutos);
+                request.getClienteNombre(), telefono, request.getClienteEmail(), pago, expiracionMinutos);
     }
 
     /**
@@ -161,6 +176,7 @@ public class ReservaService {
                 .clienteNombre(turnoFijo.getClienteNombre())
                 .clienteTelefono(turnoFijo.getClienteTelefono())
                 .codigo(generarCodigo())
+                .tokenPublico(UUID.randomUUID().toString())
                 .creadoEn(LocalDateTime.now())
                 .confirmadoEn(LocalDateTime.now())
                 .turnoFijo(turnoFijo)
@@ -221,7 +237,7 @@ public class ReservaService {
     }
 
     private Reserva crearReserva(Cancha cancha, LocalDate fecha, LocalTime horaInicio, int duracionMin,
-            String clienteNombre, String telefono, Pago pago, int expiracionMinutos) {
+            String clienteNombre, String telefono, String email, Pago pago, int expiracionMinutos) {
         // El horario de atención se valida acá y no solo en la grilla: este método lo
         // alcanza el POST público de reservas, que antes aceptaba cualquier hora y
         // cualquier fecha con tal de que el rango estuviera libre.
@@ -246,11 +262,13 @@ public class ReservaService {
                 .estado(EstadoReserva.PENDIENTE)
                 .clienteNombre(clienteNombre.trim())
                 .clienteTelefono(telefono)
+                .clienteEmail(email)
                 .codigo(generarCodigo())
+                .tokenPublico(UUID.randomUUID().toString())
                 .creadoEn(ahora)
                 .expiraEn(calcularExpiracion(cancha, ahora, inicioReal, pago, expiracionMinutos))
                 .pago(pago)
-                .cliente(clienteService.buscarOCrear(clienteNombre, telefono))
+                .cliente(clienteService.buscarOCrear(clienteNombre, telefono, email))
                 .build();
         tomarHorario(reserva);
 
@@ -307,6 +325,9 @@ public class ReservaService {
         reserva.setEstado(EstadoReserva.CONFIRMADA);
         reserva.setConfirmadoEn(LocalDateTime.now());
         reservaRepository.save(reserva);
+        // El jugador está esperando justo esta respuesta: pidió el turno y no sabe si lo
+        // tiene. Si dejó mail, se entera solo en vez de tener que escribir preguntando.
+        notificacionService.enviarComprobanteAlJugador(reserva, enlaceDelTurno(reserva));
         return aResponse(reserva);
     }
 
@@ -525,6 +546,126 @@ public class ReservaService {
 
     private String generarCodigo() {
         return UUID.randomUUID().toString().substring(0, 6).toUpperCase();
+    }
+
+    /**
+     * El enlace donde el jugador ve su turno. Sale de la URL del front, la misma que ya se
+     * usa para volver de Mercado Pago: si se configurara aparte, el día que el club cambie
+     * de dominio una de las dos quedaría vieja y nadie se enteraría hasta que un cliente
+     * abriera un enlace muerto.
+     */
+    public String enlaceDelTurno(Reserva reserva) {
+        return frontBaseUrl.replaceAll("/+$", "") + "/mi-turno/" + reserva.getTokenPublico();
+    }
+
+    /**
+     * Recordatorios de los turnos que se vienen, para el que dejó su mail.
+     *
+     * <p>Se manda una sola vez por turno y solo si todavía queda tiempo de avisar que no
+     * viene: un recordatorio que llega cuando ya no se puede cancelar no le sirve a nadie.
+     */
+    @Transactional
+    public int enviarRecordatorios() {
+        LocalDateTime ahora = LocalDateTime.now();
+        LocalDateTime desde = ahora.plusHours(HORAS_MINIMAS_RECORDATORIO);
+        LocalDateTime hasta = ahora.plusHours(24);
+        int enviados = 0;
+        for (Reserva reserva : reservaRepository.findParaRecordar(
+                ahora.toLocalDate().minusDays(1), hasta.toLocalDate())) {
+            LocalDateTime inicio = disponibilidadCanchaService.inicioReal(
+                    reserva.getCancha().getId(), reserva.getFecha(), reserva.getHoraInicio());
+            if (inicio.isBefore(desde) || inicio.isAfter(hasta)) {
+                continue;
+            }
+            notificacionService.recordarTurnoAlJugador(reserva, enlaceDelTurno(reserva));
+            reserva.setRecordatorioEnviadoEn(ahora);
+            reservaRepository.save(reserva);
+            enviados++;
+        }
+        return enviados;
+    }
+
+    // ── El turno visto por el jugador ──────────────────────────────────────────────
+    // Sin cuenta ni contraseña: manda el token del enlace, que autoriza ese turno y nada
+    // más. Pedir un usuario antes de reservar es la forma más segura de que la persona
+    // termine escribiendo por WhatsApp, que es de lo que el club se quiere sacar de encima.
+
+    @Transactional(readOnly = true)
+    public TurnoPublicoResponse verPorToken(String token) {
+        return aTurnoPublico(porToken(token));
+    }
+
+    /**
+     * El jugador cancela su propio turno. Libera el horario en el acto —que es lo que al
+     * club le sirve, porque esa hora se puede volver a vender— y le avisa por mail, porque
+     * si no se entera cuando ya es tarde.
+     *
+     * <p>La seña ya cobrada NO se devuelve sola: no hay devolución automática contra
+     * Mercado Pago y prometerla en pantalla sería mentir. La pantalla lo dice antes de
+     * confirmar y el club resuelve el caso si corresponde.
+     */
+    @Transactional
+    public TurnoPublicoResponse cancelarPorToken(String token) {
+        Reserva reserva = porToken(token);
+        String motivo = motivoNoCancelable(reserva);
+        if (motivo != null) {
+            throw new EstadoInvalidoException(motivo);
+        }
+        liberar(reserva, EstadoReserva.CANCELADA);
+        notificacionService.avisarCancelacionDelJugador(reserva);
+        return aTurnoPublico(reserva);
+    }
+
+    private Reserva porToken(String token) {
+        return reservaRepository.findByTokenPublico(token)
+                .orElseThrow(() -> new ResourceNotFoundException("Turno", token));
+    }
+
+    /**
+     * Por qué este turno no se puede cancelar por internet, o null si se puede.
+     *
+     * <p>La hora se compara sobre el arranque REAL del turno: uno de las 00:30 pertenece a
+     * la jornada del día anterior, y restarle horas a un `LocalTime` suelto daría que
+     * todavía falta un día entero.
+     */
+    private String motivoNoCancelable(Reserva reserva) {
+        int horasMinimas = configuracionSedeService.horasMinimasCancelacion();
+        if (horasMinimas <= 0) {
+            return "Este club no toma cancelaciones por internet. Escribinos y lo resolvemos.";
+        }
+        if (reserva.getEstado() != EstadoReserva.PENDIENTE && reserva.getEstado() != EstadoReserva.CONFIRMADA) {
+            return "Este turno ya no está activo.";
+        }
+        LocalDateTime inicio = disponibilidadCanchaService.inicioReal(
+                reserva.getCancha().getId(), reserva.getFecha(), reserva.getHoraInicio());
+        if (LocalDateTime.now().isAfter(inicio.minusHours(horasMinimas))) {
+            return "Los turnos se cancelan hasta " + horasMinimas
+                    + (horasMinimas == 1 ? " hora antes." : " horas antes.")
+                    + " Para este ya pasó el plazo: escribinos y lo vemos.";
+        }
+        return null;
+    }
+
+    private TurnoPublicoResponse aTurnoPublico(Reserva reserva) {
+        Cancha cancha = reserva.getCancha();
+        String motivo = motivoNoCancelable(reserva);
+        BigDecimal cobrado = cobroRepository.totalCobradoDe(reserva.getId());
+        return TurnoPublicoResponse.builder()
+                .codigo(reserva.getCodigo())
+                .clienteNombre(reserva.getClienteNombre())
+                .canchaNombre(cancha != null ? cancha.getNombre() : null)
+                .lugarNombre(cancha != null && cancha.getLugar() != null ? cancha.getLugar().getNombre() : null)
+                .fecha(reserva.getFecha())
+                .horaInicio(reserva.getHoraInicio())
+                .horaFin(reserva.getHoraFin())
+                .estado(reserva.getEstado() != null ? reserva.getEstado().name() : null)
+                .precio(MontosReserva.precio(reserva))
+                .seniaPagada(MontosReserva.seniaPagada(reserva))
+                .saldoPendiente(MontosReserva.saldo(reserva, cobrado))
+                .puedeCancelar(motivo == null)
+                .motivoNoCancelable(motivo)
+                .horasMinimasCancelacion(configuracionSedeService.horasMinimasCancelacion())
+                .build();
     }
 
     private ReservaResponse aResponse(Reserva reserva) {

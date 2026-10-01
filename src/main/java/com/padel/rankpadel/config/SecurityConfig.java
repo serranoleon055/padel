@@ -89,6 +89,10 @@ public class SecurityConfig {
                                 "/api/reservas/disponibilidad-sede").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/reservas").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/reservas/lote").permitAll()
+                        // El turno del jugador. No hay cuentas: lo que autoriza es el token
+                        // del enlace que le llegó, que da acceso a ESE turno y nada más.
+                        .requestMatchers(HttpMethod.GET, "/api/reservas/mio/*").permitAll()
+                        .requestMatchers(HttpMethod.PATCH, "/api/reservas/mio/*/cancelar").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/torneos/*/inscripciones").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/pagos/reserva").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/pagos/inscripcion").permitAll()

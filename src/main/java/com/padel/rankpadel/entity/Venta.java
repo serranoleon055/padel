@@ -1,6 +1,7 @@
 package com.padel.rankpadel.entity;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -42,7 +43,14 @@ public class Venta {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    /** Momento exacto de la venta. Para la caja manda {@link #jornada}, no esto. */
     private LocalDateTime fecha;
+
+    /**
+     * Jornada del club a la que entra esta venta. Un tubo de pelotas vendido a la 1 AM va
+     * al arqueo de la noche que arrancó ayer, no al del día que recién empieza (ver V55).
+     */
+    private LocalDate jornada;
 
     private BigDecimal total;
 

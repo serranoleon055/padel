@@ -53,6 +53,10 @@ class ReservaServiceTest {
     private NotificacionService notificacionService;
     @Mock
     private ClienteService clienteService;
+    @Mock
+    private ConfiguracionSedeService configuracionSedeService;
+    @Mock
+    private com.padel.rankpadel.repository.CobroRepository cobroRepository;
     /** El mapper es una función pura, no hay nada que simular. */
     @Spy
     private ReservaMapper reservaMapper = new ReservaMapper();
@@ -64,6 +68,10 @@ class ReservaServiceTest {
 
     @BeforeEach
     void setUp() {
+        // La URL del front sale de una property y Mockito no inyecta @Value: sin esto, el
+        // enlace del turno que va en el comprobante revienta al armarse.
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                reservaService, "frontBaseUrl", "https://rankpadel.test");
         cancha = Cancha.builder().id(1L).nombre("Cancha 1").activo(true)
                 .precioPorHora(new BigDecimal("20000")).build();
         lenient().when(disponibilidadCanchaService.inicioReal(eq(1L), any(LocalDate.class), any(LocalTime.class)))
@@ -74,6 +82,80 @@ class ReservaServiceTest {
         lenient().when(disponibilidadCanchaService.precio(
                 any(Cancha.class), any(LocalDate.class), any(LocalTime.class), anyInt()))
                 .thenReturn(new BigDecimal("20000.00"));
+    }
+
+    // ── El turno del jugador ───────────────────────────────────────────────────────
+
+    /** Turno confirmado de mañana a las 20, con su token. */
+    private Reserva turnoDeManiana() {
+        return Reserva.builder()
+                .id(9L).cancha(cancha).estado(EstadoReserva.CONFIRMADA)
+                .fecha(LocalDate.now().plusDays(1))
+                .horaInicio(LocalTime.of(20, 0)).horaFin(LocalTime.of(21, 0)).duracionMin(60)
+                .precioAplicado(new BigDecimal("20000.00"))
+                .clienteNombre("Juan").clienteTelefono("3851234567")
+                .codigo("ABC123").tokenPublico("token-1")
+                .build();
+    }
+
+    @Test
+    @DisplayName("El jugador cancela con su enlace: se libera la cancha y se avisa al club")
+    void cancelarPorToken_liberaElHorarioYAvisa() {
+        Reserva reserva = turnoDeManiana();
+        reserva.getSlots().add(ReservaSlot.builder().reserva(reserva).claveSlot("1|x|20:00").build());
+        when(reservaRepository.findByTokenPublico("token-1")).thenReturn(Optional.of(reserva));
+        when(configuracionSedeService.horasMinimasCancelacion()).thenReturn(12);
+
+        reservaService.cancelarPorToken("token-1");
+
+        assertThat(reserva.getEstado()).isEqualTo(EstadoReserva.CANCELADA);
+        // Sin vaciar los bloques, la cancha seguiría figurando ocupada y el club no podría
+        // volver a vender esa hora, que es el único motivo por el que esto existe.
+        assertThat(reserva.getSlots()).isEmpty();
+        verify(notificacionService).avisarCancelacionDelJugador(reserva);
+    }
+
+    @Test
+    @DisplayName("Pasado el plazo del club, el jugador ya no cancela solo")
+    void cancelarPorToken_fueraDePlazo_lanza() {
+        Reserva reserva = turnoDeManiana();
+        when(reservaRepository.findByTokenPublico("token-1")).thenReturn(Optional.of(reserva));
+        // Ventana de 48 h contra un turno de mañana: ya no llega.
+        when(configuracionSedeService.horasMinimasCancelacion()).thenReturn(48);
+
+        assertThrows(EstadoInvalidoException.class, () -> reservaService.cancelarPorToken("token-1"));
+        assertThat(reserva.getEstado()).isEqualTo(EstadoReserva.CONFIRMADA);
+        verify(notificacionService, never()).avisarCancelacionDelJugador(any());
+    }
+
+    @Test
+    @DisplayName("Con la cancelación online apagada, el turno solo lo cancela el club")
+    void cancelarPorToken_apagada_lanza() {
+        Reserva reserva = turnoDeManiana();
+        when(reservaRepository.findByTokenPublico("token-1")).thenReturn(Optional.of(reserva));
+        when(configuracionSedeService.horasMinimasCancelacion()).thenReturn(0);
+
+        assertThrows(EstadoInvalidoException.class, () -> reservaService.cancelarPorToken("token-1"));
+        assertThat(reserva.getEstado()).isEqualTo(EstadoReserva.CONFIRMADA);
+    }
+
+    @Test
+    @DisplayName("La vista del jugador no expone el teléfono ni el id del turno")
+    void verPorToken_soloLoQueLaPersonaNecesita() {
+        Reserva reserva = turnoDeManiana();
+        when(reservaRepository.findByTokenPublico("token-1")).thenReturn(Optional.of(reserva));
+        when(configuracionSedeService.horasMinimasCancelacion()).thenReturn(12);
+        when(cobroRepository.totalCobradoDe(9L)).thenReturn(BigDecimal.ZERO);
+
+        var turno = reservaService.verPorToken("token-1");
+
+        assertThat(turno.getCodigo()).isEqualTo("ABC123");
+        assertThat(turno.isPuedeCancelar()).isTrue();
+        assertThat(turno.getHorasMinimasCancelacion()).isEqualTo(12);
+        // El DTO público no tiene de dónde sacar el teléfono: es la garantía de que el
+        // enlace, que lo abre cualquiera que lo tenga, no filtre datos de la persona.
+        assertThat(turno.getClass().getDeclaredFields())
+                .noneMatch(campo -> campo.getName().toLowerCase().contains("telefono"));
     }
 
     private SolicitudReservaRequest solicitud(LocalDate fecha, LocalTime hora) {

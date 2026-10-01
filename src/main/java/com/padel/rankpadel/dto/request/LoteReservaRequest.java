@@ -3,8 +3,10 @@ package com.padel.rankpadel.dto.request;
 import java.time.LocalDate;
 import java.time.LocalTime;
 
+import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -35,4 +37,9 @@ public class LoteReservaRequest {
 
     @NotBlank
     private String clienteTelefono;
+
+    /** Opcional: a donde va el comprobante con el enlace del turno y el recordatorio. */
+    @Email
+    @Size(max = 160)
+    private String clienteEmail;
 }

@@ -57,10 +57,15 @@ public class CajaController {
         return ResponseEntity.ok(cobroService.anular(id, motivo));
     }
 
+    /**
+     * El arqueo de una jornada. Sin {@code fecha} devuelve la que el club está atendiendo,
+     * que después de medianoche sigue siendo la de ayer: a las 00:30 la caja que se está
+     * por cerrar es la de la noche en curso, no la del día que recién empieza.
+     */
     @GetMapping("/caja")
     public ResponseEntity<CierreCajaResponse> cierre(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha) {
-        return ResponseEntity.ok(cajaService.cierre(fecha != null ? fecha : LocalDate.now()));
+        return ResponseEntity.ok(cajaService.cierre(fecha != null ? fecha : cajaService.jornadaActual()));
     }
 
     /** Firma el arqueo del día: alguien contó el cajón y deja asentado cuánto había. */

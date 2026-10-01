@@ -68,14 +68,19 @@ public class CajaService {
     private final CobroService cobroService;
     private final VentaService ventaService;
     private final GastoService gastoService;
+    private final DisponibilidadCanchaService disponibilidadCanchaService;
 
+    /**
+     * El arqueo de una JORNADA del club, que no es un día de calendario. Un club que
+     * cierra a las 2 sigue cobrando después de medianoche: si la caja cortara a las 00:00,
+     * el que cuenta el cajón a las 2:15 tendría en la mano dos horas de plata que el
+     * sistema ya mandó al día siguiente, y la diferencia del arqueo saldría mal todas las
+     * noches. La jornada viene estampada en cada movimiento desde V55.
+     */
     @Transactional(readOnly = true)
-    public CierreCajaResponse cierre(LocalDate fecha) {
-        LocalDateTime desde = fecha.atStartOfDay();
-        LocalDateTime hasta = desde.plusDays(1);
-
-        List<Cobro> cobros = cobroRepository.findDelDia(desde, hasta);
-        List<Venta> ventas = ventaRepository.findDelDiaConItems(desde, hasta);
+    public CierreCajaResponse cierre(LocalDate jornada) {
+        List<Cobro> cobros = cobroRepository.findDeLaJornada(jornada);
+        List<Venta> ventas = ventaRepository.findDeLaJornadaConItems(jornada);
 
         // Los turnos y lo que se vendió en el mostrador van al mismo arqueo: la plata del
         // cajón no distingue si entró por una cancha o por un tubo de pelotas.
@@ -111,23 +116,23 @@ public class CajaService {
 
         // Lo que salió del cajón también cuenta para el arqueo: si se pagó al gasista en
         // efectivo, esa plata ya no está aunque nadie la haya cobrado de menos.
-        BigDecimal egresos = gastoRepository.totalDelDia(fecha);
-        BigDecimal egresosEfectivo = gastoRepository.totalDelDiaPorMedio(fecha, MedioPago.EFECTIVO);
+        BigDecimal egresos = gastoRepository.totalDelDia(jornada);
+        BigDecimal egresosEfectivo = gastoRepository.totalDelDiaPorMedio(jornada, MedioPago.EFECTIVO);
         BigDecimal efectivoEsperado = totales.getOrDefault(MedioPago.EFECTIVO, BigDecimal.ZERO)
                 .subtract(egresosEfectivo);
 
         // Las señas de Mercado Pago se acreditan en la cuenta, no en el cajón: van
         // separadas para que el arqueo de efectivo cierre.
         BigDecimal seniasOnline = pagoRepository
-                .findByEstadoAndPagadoEnBetween(EstadoPago.APROBADO, desde, hasta).stream()
+                .findByEstadoAndJornada(EstadoPago.APROBADO, jornada).stream()
                 .map(Pago::getMontoSenia)
                 .filter(monto -> monto != null)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        SaldoDelDia saldo = calcularSaldoPendiente(fecha);
+        SaldoDelDia saldo = calcularSaldoPendiente(jornada);
 
         return CierreCajaResponse.builder()
-                .fecha(fecha)
+                .fecha(jornada)
                 .porMedio(porMedio)
                 .efectivoEsperado(efectivoEsperado)
                 .totalMostrador(totalMostrador)
@@ -139,13 +144,13 @@ public class CajaService {
                 .egresos(egresos)
                 .egresosEfectivo(egresosEfectivo)
                 .resultado(totalMostrador.add(seniasOnline).subtract(egresos))
-                .gastos(gastoService.listarDelDia(fecha))
+                .gastos(gastoService.listarDelDia(jornada))
                 .ventas(ventas.stream().map(ventaService::aResponse).toList())
                 .totalVentas(ventas.stream().map(Venta::getTotal).reduce(BigDecimal.ZERO, BigDecimal::add))
-                .arqueo(cierreCajaRepository.findByFecha(fecha).map(this::aArqueo).orElse(null))
-                .cobrosAnulados(cobroRepository.findAnuladosDelDia(desde, hasta).stream()
+                .arqueo(cierreCajaRepository.findByFecha(jornada).map(this::aArqueo).orElse(null))
+                .cobrosAnulados(cobroRepository.findAnuladosDeLaJornada(jornada).stream()
                         .map(cobroService::aResponse).toList())
-                .ventasAnuladas(ventaRepository.findAnuladasDelDia(desde, hasta).stream()
+                .ventasAnuladas(ventaRepository.findAnuladasDeLaJornada(jornada).stream()
                         .map(ventaService::aResponse).toList())
                 .build();
     }
@@ -161,7 +166,9 @@ public class CajaService {
         if (cierreCajaRepository.existsByFecha(fecha)) {
             throw new EstadoInvalidoException("La caja del " + fecha.format(DIA) + " ya está cerrada");
         }
-        if (fecha.isAfter(LocalDate.now())) {
+        // Contra la jornada, no contra el calendario: a las 00:30 el club está cerrando la
+        // noche de ayer, y esa jornada sí se puede arquear aunque "hoy" ya sea otro día.
+        if (fecha.isAfter(disponibilidadCanchaService.fechaDeJornadaActual())) {
             throw new EstadoInvalidoException("No se puede cerrar un día que todavía no pasó");
         }
 
@@ -219,9 +226,15 @@ public class CajaService {
         return auth != null ? auth.getName() : null;
     }
 
+    /** La jornada que el club está atendiendo: la que abre la caja si no se elige otra. */
     @Transactional(readOnly = true)
-    public List<CobroResponse> movimientosDe(LocalDate fecha) {
-        return cobroRepository.findDelDia(fecha.atStartOfDay(), fecha.plusDays(1).atStartOfDay()).stream()
+    public LocalDate jornadaActual() {
+        return disponibilidadCanchaService.fechaDeJornadaActual();
+    }
+
+    @Transactional(readOnly = true)
+    public List<CobroResponse> movimientosDe(LocalDate jornada) {
+        return cobroRepository.findDeLaJornada(jornada).stream()
                 .map(cobroService::aResponse)
                 .toList();
     }

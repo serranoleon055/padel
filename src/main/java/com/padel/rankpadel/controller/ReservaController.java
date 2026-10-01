@@ -18,8 +18,10 @@ import org.springframework.web.bind.annotation.RestController;
 import com.padel.rankpadel.dto.request.LoteReservaRequest;
 import com.padel.rankpadel.dto.request.SolicitudReservaRequest;
 import com.padel.rankpadel.dto.response.DisponibilidadSedeResponse;
+import com.padel.rankpadel.dto.response.JornadaActualResponse;
 import com.padel.rankpadel.dto.response.ReservaResponse;
 import com.padel.rankpadel.dto.response.SlotDisponibilidad;
+import com.padel.rankpadel.dto.response.TurnoPublicoResponse;
 import com.padel.rankpadel.service.DisponibilidadCanchaService;
 import com.padel.rankpadel.service.ReservaService;
 
@@ -53,6 +55,31 @@ public class ReservaController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha) {
         return ResponseEntity.ok(reservaService.listarDelDia(
                 fecha != null ? fecha : reservaService.fechaDeJornadaActual()));
+    }
+
+    /**
+     * La jornada que el club está atendiendo, para que las pantallas del mostrador abran
+     * en el día correcto. La regla vive solo acá: el front que la calcule por su cuenta
+     * es la forma segura de que dentro de un mes las dos versiones no coincidan.
+     */
+    @GetMapping("/jornada-actual")
+    public ResponseEntity<JornadaActualResponse> jornadaActual() {
+        return ResponseEntity.ok(new JornadaActualResponse(reservaService.fechaDeJornadaActual()));
+    }
+
+    /**
+     * El turno del jugador, abierto con el token de su enlace. Público a propósito: no hay
+     * cuentas ni contraseñas, y el token es lo que autoriza (autoriza ESE turno y nada más).
+     */
+    @GetMapping("/mio/{token}")
+    public ResponseEntity<TurnoPublicoResponse> turnoDelJugador(@PathVariable String token) {
+        return ResponseEntity.ok(reservaService.verPorToken(token));
+    }
+
+    /** El jugador cancela su turno. La ventana la define el club en Configuración de sede. */
+    @PatchMapping("/mio/{token}/cancelar")
+    public ResponseEntity<TurnoPublicoResponse> cancelarMiTurno(@PathVariable String token) {
+        return ResponseEntity.ok(reservaService.cancelarPorToken(token));
     }
 
     /** La agenda de la sucursal por horario: es lo que dibuja la grilla de turnos. */

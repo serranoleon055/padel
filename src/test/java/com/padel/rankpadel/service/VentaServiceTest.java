@@ -56,9 +56,20 @@ class VentaServiceTest {
     private ProductoService productoService;
     @Mock
     private CajaCerradaGuard cajaCerradaGuard;
+    @Mock
+    private DisponibilidadCanchaService disponibilidadCanchaService;
 
     @InjectMocks
     private VentaService ventaService;
+
+    /** La noche del sábado: lo vendido a la 1 AM del domingo entra en este arqueo. */
+    private static final java.time.LocalDate JORNADA = java.time.LocalDate.of(2026, 8, 15);
+
+    @org.junit.jupiter.api.BeforeEach
+    void fijarJornada() {
+        org.mockito.Mockito.lenient()
+                .when(disponibilidadCanchaService.fechaDeJornadaActual()).thenReturn(JORNADA);
+    }
 
     private Producto producto(Long id, String nombre, String precio, String costo, int stock) {
         return Producto.builder()

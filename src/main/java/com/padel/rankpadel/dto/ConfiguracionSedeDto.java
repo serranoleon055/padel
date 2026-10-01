@@ -22,6 +22,13 @@ public class ConfiguracionSedeDto {
     private String facebook;
     private String direccion;
     private String mapsEmbedUrl;
+
+    /**
+     * Hasta cuántas horas antes del turno el jugador lo puede cancelar solo. En 0 la
+     * cancelación por internet queda apagada y solo cancela el club.
+     */
+    private Integer cancelacionHorasMinimas;
+
     private List<HorarioSede> horarios;
     private List<FotoSede> galeria;
     private List<String> formasPago;

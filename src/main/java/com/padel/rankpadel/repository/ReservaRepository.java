@@ -12,10 +12,36 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Optional;
+
 import com.padel.rankpadel.entity.Reserva;
 import com.padel.rankpadel.enums.EstadoReserva;
 
 public interface ReservaRepository extends JpaRepository<Reserva, Long> {
+
+    /**
+     * El turno del enlace que le llegó al jugador. Trae cancha, sede y pago porque la
+     * pantalla pública los muestra todos y no puede disparar una consulta por cada uno.
+     */
+    @Query("SELECT r FROM Reserva r LEFT JOIN FETCH r.cancha c LEFT JOIN FETCH c.lugar "
+            + "LEFT JOIN FETCH r.pago WHERE r.tokenPublico = :token")
+    Optional<Reserva> findByTokenPublico(@Param("token") String token);
+
+    /**
+     * Candidatos a recordatorio: confirmados, con mail, y a los que todavía no se les
+     * avisó. El rango de fechas es amplio a propósito —la hora exacta la decide el
+     * servicio, que sabe resolver la jornada— pero acota la consulta a un par de días.
+     */
+    @Query("""
+        SELECT r FROM Reserva r
+        JOIN FETCH r.cancha
+        LEFT JOIN FETCH r.cliente
+        WHERE r.estado = com.padel.rankpadel.enums.EstadoReserva.CONFIRMADA
+          AND r.recordatorioEnviadoEn IS NULL
+          AND r.fecha BETWEEN :desde AND :hasta
+          AND (r.clienteEmail IS NOT NULL OR r.cliente.email IS NOT NULL)
+        """)
+    List<Reserva> findParaRecordar(@Param("desde") LocalDate desde, @Param("hasta") LocalDate hasta);
 
     // El pago viene en el mismo viaje: el listado del día muestra estado de seña y saldo
     // de cada turno, y sin el fetch eso era una consulta por fila.
@@ -144,6 +170,91 @@ public interface ReservaRepository extends JpaRepository<Reserva, Long> {
         WHERE r.cliente.id = :clienteId AND r.clienteNombre IS NOT NULL
         """)
     List<String> nombresUsadosPor(@Param("clienteId") Long clienteId);
+
+    // ── Seguimiento de clientes ────────────────────────────────────────────────────
+    // El club ya tiene todo el historial cargado; lo que le faltaba era que el sistema le
+    // dijera a quién conviene escribirle. Las tres consultas agrupan en la base: recorrer
+    // los clientes en Java para contar sus turnos sería un N+1 con nombre de informe.
+
+    /**
+     * Los que venían y dejaron de venir. Ordenados por el turno más reciente primero: el
+     * que se enfrió hace tres semanas se recupera con un mensaje; el de hace dos años, no.
+     */
+    @Query("""
+        SELECT c.id AS clienteId, c.nombre AS nombre, c.telefono AS telefono,
+               COUNT(r) AS turnos,
+               SUM(COALESCE(r.precioAplicado, 0)) AS gastado,
+               MAX(r.fecha) AS ultimoTurno, MIN(r.fecha) AS primerTurno
+        FROM Reserva r JOIN r.cliente c
+        WHERE r.estado IN :estados
+        GROUP BY c.id, c.nombre, c.telefono
+        HAVING MAX(r.fecha) < :corte AND COUNT(r) >= :turnosMinimos
+        ORDER BY MAX(r.fecha) DESC
+        """)
+    List<ClienteSeguimiento> clientesDormidos(@Param("corte") LocalDate corte,
+            @Param("turnosMinimos") long turnosMinimos,
+            @Param("estados") Collection<EstadoReserva> estados,
+            Pageable pageable);
+
+    /**
+     * Los que más dejaron en el club en el período. Los que hay que cuidar.
+     *
+     * <p>Solo cuenta turnos que ya se jugaron: un abonado tiene seis semanas de turnos
+     * confirmados por adelantado, y sumarlos lo pondría primero en la lista con plata que
+     * todavía no entró. Es el mismo criterio que usa "Lo que más dejan" en Estadísticas.
+     */
+    @Query("""
+        SELECT c.id AS clienteId, c.nombre AS nombre, c.telefono AS telefono,
+               COUNT(r) AS turnos,
+               SUM(COALESCE(r.precioAplicado, 0)) AS gastado,
+               MAX(r.fecha) AS ultimoTurno, MIN(r.fecha) AS primerTurno
+        FROM Reserva r JOIN r.cliente c
+        WHERE r.estado IN :estados AND r.fecha BETWEEN :desde AND :hoy
+        GROUP BY c.id, c.nombre, c.telefono
+        ORDER BY SUM(COALESCE(r.precioAplicado, 0)) DESC
+        """)
+    List<ClienteSeguimiento> mejoresClientes(@Param("desde") LocalDate desde,
+            @Param("hoy") LocalDate hoy,
+            @Param("estados") Collection<EstadoReserva> estados,
+            Pageable pageable);
+
+    /**
+     * Los que jugaron por primera vez hace poco: el momento de que vuelvan una segunda.
+     *
+     * <p>Igual que arriba, mira hasta hoy: con los turnos futuros adentro, "último turno"
+     * mostraba una fecha que todavía no pasó y los días sin venir salían en negativo.
+     */
+    @Query("""
+        SELECT c.id AS clienteId, c.nombre AS nombre, c.telefono AS telefono,
+               COUNT(r) AS turnos,
+               SUM(COALESCE(r.precioAplicado, 0)) AS gastado,
+               MAX(r.fecha) AS ultimoTurno, MIN(r.fecha) AS primerTurno
+        FROM Reserva r JOIN r.cliente c
+        WHERE r.estado IN :estados AND r.fecha <= :hoy
+        GROUP BY c.id, c.nombre, c.telefono
+        HAVING MIN(r.fecha) >= :desde
+        ORDER BY MIN(r.fecha) DESC
+        """)
+    List<ClienteSeguimiento> clientesNuevos(@Param("desde") LocalDate desde,
+            @Param("hoy") LocalDate hoy,
+            @Param("estados") Collection<EstadoReserva> estados,
+            Pageable pageable);
+
+    interface ClienteSeguimiento {
+        Long getClienteId();
+
+        String getNombre();
+
+        String getTelefono();
+
+        long getTurnos();
+
+        BigDecimal getGastado();
+
+        LocalDate getUltimoTurno();
+
+        LocalDate getPrimerTurno();
+    }
 
     interface ResumenCliente {
         Long getClienteId();
