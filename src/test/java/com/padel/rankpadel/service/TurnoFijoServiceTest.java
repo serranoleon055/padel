@@ -32,8 +32,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.padel.rankpadel.dto.request.TurnoFijoRequest;
+import com.padel.rankpadel.dto.response.DisponibilidadAbonosResponse;
 import com.padel.rankpadel.dto.response.GeneracionTurnosFijosResponse;
 import com.padel.rankpadel.entity.Cancha;
+import com.padel.rankpadel.entity.HorarioCancha;
 import com.padel.rankpadel.entity.Reserva;
 import com.padel.rankpadel.entity.TurnoFijo;
 import com.padel.rankpadel.exception.EstadoInvalidoException;
@@ -273,5 +275,124 @@ class TurnoFijoServiceTest {
         verify(reservaService, times(1))
                 .crearParaTurnoFijo(any(), fechas.capture(), any(), any());
         assertThat(fechas.getAllValues()).allMatch(f -> !f.isAfter(corte));
+    }
+
+    @Nested
+    @DisplayName("Grilla de turnos fijos disponibles")
+    class DisponibilidadSemanal {
+
+        /** Club que abre a las 10 y cierra a las 2 de la madrugada, todos los días. */
+        private void clubDe10A02() {
+            HorarioCancha horario = HorarioCancha.builder()
+                    .cancha(cancha).horaApertura(LocalTime.of(10, 0))
+                    .horaCierre(LocalTime.of(2, 0)).diasActivos("1,2,3,4,5,6,7").activo(true).build();
+            when(canchaRepository.findByLugarIdAndActivoTrue(7L)).thenReturn(List.of(cancha));
+            when(disponibilidadCanchaService.horarioDe(1L)).thenReturn(horario);
+            when(disponibilidadCanchaService.atiendeElDia(eq(horario), anyInt())).thenReturn(true);
+        }
+
+        private DisponibilidadAbonosResponse.CanchaDelDia martesDe(DisponibilidadAbonosResponse respuesta) {
+            return respuesta.dias().get(DayOfWeek.TUESDAY.getValue() - 1).canchas().get(0);
+        }
+
+        @Test
+        @DisplayName("Sin abonos, toda la jornada está disponible")
+        void sinAbonos_jornadaCompleta() {
+            clubDe10A02();
+            when(turnoFijoRepository.buscar(7L, null)).thenReturn(List.of());
+
+            DisponibilidadAbonosResponse respuesta = turnoFijoService.disponibilidadSemanal(7L);
+
+            assertThat(respuesta.dias()).hasSize(7);
+            assertThat(martesDe(respuesta).cerrada()).isFalse();
+            assertThat(martesDe(respuesta).franjas())
+                    .containsExactly(new DisponibilidadAbonosResponse.Franja(LocalTime.of(10, 0), LocalTime.of(2, 0)));
+        }
+
+        @Test
+        @DisplayName("Un abono parte la jornada en dos franjas y no aparece en los otros días")
+        void conAbono_partelaJornada() {
+            clubDe10A02();
+            when(turnoFijoRepository.buscar(7L, null)).thenReturn(List.of(turnoMartes(120, null)));
+
+            DisponibilidadAbonosResponse respuesta = turnoFijoService.disponibilidadSemanal(7L);
+
+            assertThat(martesDe(respuesta).franjas()).containsExactly(
+                    new DisponibilidadAbonosResponse.Franja(LocalTime.of(10, 0), LocalTime.of(20, 0)),
+                    new DisponibilidadAbonosResponse.Franja(LocalTime.of(22, 0), LocalTime.of(2, 0)));
+            DisponibilidadAbonosResponse.CanchaDelDia miercoles = respuesta.dias().get(2).canchas().get(0);
+            assertThat(miercoles.franjas())
+                    .containsExactly(new DisponibilidadAbonosResponse.Franja(LocalTime.of(10, 0), LocalTime.of(2, 0)));
+        }
+
+        /**
+         * El caso que motiva medir en minutos desde la apertura: un abono de las 23 es el
+         * ÚLTIMO de la noche, no el primero. Ordenando por reloj quedaba antes que el de
+         * las 15 y los huecos salían dados vuelta.
+         */
+        @Test
+        @DisplayName("Un abono de la medianoche se ubica al final de la jornada, no al principio")
+        void abonoDeMedianoche_vaAlFinal() {
+            clubDe10A02();
+            TurnoFijo tarde = turnoMartes(120, null);
+            TurnoFijo nocturno = turnoMartes(120, null);
+            nocturno.setId(6L);
+            nocturno.setHoraInicio(LocalTime.of(0, 0));
+            tarde.setHoraInicio(LocalTime.of(15, 0));
+            when(turnoFijoRepository.buscar(7L, null)).thenReturn(List.of(nocturno, tarde));
+
+            DisponibilidadAbonosResponse respuesta = turnoFijoService.disponibilidadSemanal(7L);
+
+            assertThat(martesDe(respuesta).franjas()).containsExactly(
+                    new DisponibilidadAbonosResponse.Franja(LocalTime.of(10, 0), LocalTime.of(15, 0)),
+                    new DisponibilidadAbonosResponse.Franja(LocalTime.of(17, 0), LocalTime.of(0, 0)));
+        }
+
+        @Test
+        @DisplayName("Un abono con fecha de corte pasada ya no ocupa")
+        void abonoVencido_noOcupa() {
+            clubDe10A02();
+            TurnoFijo vencido = turnoMartes(120, null);
+            vencido.setVigenteHasta(LocalDate.now().minusDays(1));
+            when(turnoFijoRepository.buscar(7L, null)).thenReturn(List.of(vencido));
+
+            DisponibilidadAbonosResponse respuesta = turnoFijoService.disponibilidadSemanal(7L);
+
+            assertThat(martesDe(respuesta).franjas())
+                    .containsExactly(new DisponibilidadAbonosResponse.Franja(LocalTime.of(10, 0), LocalTime.of(2, 0)));
+        }
+
+        @Test
+        @DisplayName("El día que el club no atiende sale como cerrado, no como libre")
+        void diaSinAtencion_saleCerrado() {
+            HorarioCancha horario = HorarioCancha.builder()
+                    .cancha(cancha).horaApertura(LocalTime.of(10, 0))
+                    .horaCierre(LocalTime.of(2, 0)).diasActivos("1,2,3,4,5,6").activo(true).build();
+            when(canchaRepository.findByLugarIdAndActivoTrue(7L)).thenReturn(List.of(cancha));
+            when(disponibilidadCanchaService.horarioDe(1L)).thenReturn(horario);
+            when(disponibilidadCanchaService.atiendeElDia(eq(horario), anyInt()))
+                    .thenAnswer(invocacion -> invocacion.getArgument(1, Integer.class) != 7);
+            when(turnoFijoRepository.buscar(7L, null)).thenReturn(List.of());
+
+            DisponibilidadAbonosResponse respuesta = turnoFijoService.disponibilidadSemanal(7L);
+
+            DisponibilidadAbonosResponse.CanchaDelDia domingo = respuesta.dias().get(6).canchas().get(0);
+            assertThat(domingo.cerrada()).isTrue();
+            assertThat(domingo.franjas()).isEmpty();
+        }
+
+        /** Una cancha sin horario cargado no se puede vender: no es que esté todo libre. */
+        @Test
+        @DisplayName("Una cancha sin horario cargado sale cerrada todos los días")
+        void sinHorarioCargado_saleCerrada() {
+            when(canchaRepository.findByLugarIdAndActivoTrue(7L)).thenReturn(List.of(cancha));
+            when(disponibilidadCanchaService.horarioDe(1L)).thenReturn(null);
+            when(turnoFijoRepository.buscar(7L, null)).thenReturn(List.of());
+
+            DisponibilidadAbonosResponse respuesta = turnoFijoService.disponibilidadSemanal(7L);
+
+            assertThat(respuesta.dias()).allSatisfy(dia ->
+                    assertThat(dia.canchas().get(0).cerrada()).isTrue());
+        }
     }
 }
