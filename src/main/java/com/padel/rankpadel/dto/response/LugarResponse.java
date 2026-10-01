@@ -18,4 +18,7 @@ public class LugarResponse {
     private String direccion;
     private Integer cantidadCanchas;
 
+    /** Para que el panel distinga la sede archivada de la activa y pueda reactivarla. */
+    private boolean archivado;
+
 }

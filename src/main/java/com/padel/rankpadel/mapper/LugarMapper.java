@@ -27,6 +27,7 @@ public class LugarMapper {
                 .nombre(lugar.getNombre())
                 .direccion(lugar.getDireccion())
                 .cantidadCanchas(lugar.getCantidadCanchas())
+                .archivado(lugar.isArchivado())
                 .build();
 
         return lugarDTO;

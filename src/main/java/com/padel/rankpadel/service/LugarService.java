@@ -41,10 +41,34 @@ public class LugarService {
     }
 
     public List<LugarResponse> listarTodos() {
-        return lugarRepository.findByArchivadoFalse()
+        return listarTodos(false);
+    }
+
+    /**
+     * Con {@code incluirArchivadas} el panel ve también las sedes dadas de baja, que es lo
+     * único que permite volver a activarlas: archivar era de ida y la única salida era
+     * tocar la base a mano.
+     */
+    public List<LugarResponse> listarTodos(boolean incluirArchivadas) {
+        return (incluirArchivadas ? lugarRepository.findAll() : lugarRepository.findByArchivadoFalse())
                 .stream()
                 .map(lugarMapper::lugarToResponse)
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Reactiva la sede y vuelve a habilitar sus canchas, espejando lo que apaga
+     * {@link #archivar}: dejarla activa con las canchas apagadas sería una sede que no
+     * vende nada, que es justo el estado inconsistente que el archivado vino a evitar.
+     */
+    @Transactional
+    public LugarResponse reactivar(Long id) {
+        Lugar lugar = lugarRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Lugar", id));
+        lugar.setArchivado(false);
+        canchaRepository.findByLugarId(id).forEach(cancha -> cancha.setActivo(true));
+        lugarRepository.save(lugar);
+        return lugarMapper.lugarToResponse(lugar);
     }
 
     public LugarResponse buscarPorId(Long id) {

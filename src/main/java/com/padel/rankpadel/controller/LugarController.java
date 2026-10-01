@@ -7,16 +7,19 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.padel.rankpadel.dto.request.BatchDeleteRequest;
 import com.padel.rankpadel.dto.request.LugarRequest;
 import com.padel.rankpadel.dto.response.LugarResponse;
 import com.padel.rankpadel.service.LugarService;
+import com.padel.rankpadel.util.UsuarioActual;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -41,8 +44,12 @@ public class LugarController {
     @Operation(summary = "Listar todos los lugares")
     @ApiResponse(responseCode = "200", description = "Lista de lugares")
     @GetMapping
-    public ResponseEntity<List<LugarResponse>> listarTodos() {
-        return ResponseEntity.ok(lugarService.listarTodos());
+    public ResponseEntity<List<LugarResponse>> listarTodos(
+            @RequestParam(defaultValue = "false") boolean incluirArchivadas) {
+        // El listado lo usa también el sitio público: las sedes archivadas solo se muestran
+        // a quien entró al panel, que es el único que puede reactivarlas.
+        return ResponseEntity.ok(lugarService.listarTodos(
+                incluirArchivadas && UsuarioActual.esAdmin()));
     }
 
     @SecurityRequirements({})
@@ -92,6 +99,13 @@ public class LugarController {
             @Parameter(description = "ID del lugar") @PathVariable Long id) {
         lugarService.eliminar(id);
         return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "Reactivar sede", description = "Requiere JWT. Desarchiva la sede y vuelve a habilitar sus canchas.")
+    @PatchMapping("/{id}/reactivar")
+    public ResponseEntity<LugarResponse> reactivar(
+            @Parameter(description = "ID del lugar") @PathVariable Long id) {
+        return ResponseEntity.ok(lugarService.reactivar(id));
     }
 
     @Operation(summary = "Eliminar lugares en lote", description = "Requiere JWT.")

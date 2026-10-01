@@ -34,7 +34,18 @@ public class CanchaService {
 
     @Transactional(readOnly = true)
     public List<CanchaResponse> listarPorLugar(Long lugarId) {
-        return canchaRepository.findByLugarIdAndActivoTrue(lugarId)
+        return listarPorLugar(lugarId, false);
+    }
+
+    /**
+     * Con {@code incluirBajas} se ven también las canchas dadas de baja. Es lo que permite
+     * volver a habilitar la que se apagó por una refacción: sin verla en el listado no
+     * había forma de reactivarla desde la pantalla.
+     */
+    @Transactional(readOnly = true)
+    public List<CanchaResponse> listarPorLugar(Long lugarId, boolean incluirBajas) {
+        return (incluirBajas ? canchaRepository.findByLugarId(lugarId)
+                : canchaRepository.findByLugarIdAndActivoTrue(lugarId))
                 .stream().map(this::toResponse)
                 .sorted(OrdenCanchas.porNombre(CanchaResponse::getNombre))
                 .collect(Collectors.toList());
@@ -82,6 +93,15 @@ public class CanchaService {
                 .orElseThrow(() -> new ResourceNotFoundException("Cancha", id));
         cancha.setActivo(false);
         canchaRepository.save(cancha);
+    }
+
+    /** Vuelve a poner la cancha en venta. Los turnos ya cargados no se tocan. */
+    @Transactional
+    public CanchaResponse reactivar(Long id) {
+        Cancha cancha = canchaRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Cancha", id));
+        cancha.setActivo(true);
+        return toResponse(canchaRepository.save(cancha));
     }
 
     private CanchaResponse toResponse(Cancha c) {
