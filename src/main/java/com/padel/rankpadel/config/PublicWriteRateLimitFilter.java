@@ -31,6 +31,9 @@ public class PublicWriteRateLimitFilter extends OncePerRequestFilter {
     private static final Pattern RUTAS_PUBLICAS_ESCRITURA = Pattern.compile(
             "^/api/(reservas(/lote)?|torneos/\\d+/inscripciones|pagos/(reserva|inscripcion|[^/]+/cancelar))$");
 
+    private static final Pattern CANCELACION_DEL_JUGADOR = Pattern.compile(
+            "^/api/reservas/mio/[^/]+/cancelar$");
+
     private static final int MAX_ENTRADAS_MAPA = 10_000;
 
     @Value("${app.security.public-write-rate-limit.max-attempts:20}")
@@ -40,6 +43,12 @@ public class PublicWriteRateLimitFilter extends OncePerRequestFilter {
     private long windowSeconds;
 
     private final ConcurrentHashMap<String, Window> intentosPorIp = new ConcurrentHashMap<>();
+
+    private final ClienteIp clienteIp;
+
+    public PublicWriteRateLimitFilter(ClienteIp clienteIp) {
+        this.clienteIp = clienteIp;
+    }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -51,7 +60,7 @@ public class PublicWriteRateLimitFilter extends OncePerRequestFilter {
             return;
         }
 
-        if (superaLimite(clientIp(request))) {
+        if (superaLimite(clienteIp.de(request))) {
             response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
             response.setCharacterEncoding("UTF-8");
@@ -66,8 +75,14 @@ public class PublicWriteRateLimitFilter extends OncePerRequestFilter {
     }
 
     private boolean esEscrituraPublica(HttpServletRequest request) {
-        return HttpMethod.POST.matches(request.getMethod())
-                && RUTAS_PUBLICAS_ESCRITURA.matcher(request.getServletPath()).matches();
+        String ruta = request.getServletPath();
+        if (HttpMethod.POST.matches(request.getMethod())) {
+            return RUTAS_PUBLICAS_ESCRITURA.matcher(ruta).matches();
+        }
+        // La cancelación del jugador es un PATCH, así que no entraba por el camino de
+        // arriba y quedaba sin tope: es escritura pública igual que las otras.
+        return HttpMethod.PATCH.matches(request.getMethod())
+                && CANCELACION_DEL_JUGADOR.matcher(ruta).matches();
     }
 
     private boolean esAdminAutenticado() {
@@ -93,14 +108,6 @@ public class PublicWriteRateLimitFilter extends OncePerRequestFilter {
         });
 
         return ventana.contador.incrementAndGet() > maxAttempts;
-    }
-
-    private String clientIp(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
-        }
-        return request.getRemoteAddr();
     }
 
     private static final class Window {

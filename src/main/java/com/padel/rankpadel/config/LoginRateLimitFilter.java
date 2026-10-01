@@ -21,6 +21,13 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
 
     private static final String LOGIN_PATH = "/auth/login";
 
+    /**
+     * Tope de IPs recordadas. Sin esto el mapa crecía para siempre —una entrada por cada
+     * IP que alguna vez pegó al login— y un escaneo de bots lo llenaba de basura contra los
+     * 384 MB de heap que tiene el contenedor.
+     */
+    private static final int MAX_ENTRADAS_MAPA = 10_000;
+
     @Value("${app.security.login-rate-limit.max-attempts:10}")
     private int maxAttempts;
 
@@ -28,6 +35,12 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
     private long windowSeconds;
 
     private final ConcurrentHashMap<String, Window> intentosPorIp = new ConcurrentHashMap<>();
+
+    private final ClienteIp clienteIp;
+
+    public LoginRateLimitFilter(ClienteIp clienteIp) {
+        this.clienteIp = clienteIp;
+    }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -39,7 +52,7 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
             return;
         }
 
-        String ip = clientIp(request);
+        String ip = clienteIp.de(request);
         if (superaLimite(ip)) {
             response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
@@ -63,6 +76,10 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
         long ahora = System.currentTimeMillis();
         long ventanaMs = windowSeconds * 1000L;
 
+        if (intentosPorIp.size() > MAX_ENTRADAS_MAPA) {
+            intentosPorIp.entrySet().removeIf(e -> ahora - e.getValue().inicio >= ventanaMs);
+        }
+
         Window ventana = intentosPorIp.compute(ip, (clave, actual) -> {
             if (actual == null || ahora - actual.inicio >= ventanaMs) {
                 return new Window(ahora);
@@ -71,14 +88,6 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
         });
 
         return ventana.contador.incrementAndGet() > maxAttempts;
-    }
-
-    private String clientIp(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
-        }
-        return request.getRemoteAddr();
     }
 
     private static final class Window {
