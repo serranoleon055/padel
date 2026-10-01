@@ -111,6 +111,10 @@ public class SecurityConfig {
                         // Reabrir un cierre es el caso más claro: si el que cobró puede
                         // reabrir su propio arqueo, la firma de V51 no vale nada.
                         .requestMatchers(HttpMethod.DELETE, "/api/caja/cierre").hasRole("DUENIO")
+                        // El historial de arqueos es el número que al dueño le sirve para
+                        // mirar al empleado: si siempre falta plata el mismo día, o si
+                        // siempre reabre el mismo. No lo ve el que cobra.
+                        .requestMatchers(HttpMethod.GET, "/api/caja/cierres").hasRole("DUENIO")
                         .requestMatchers("/api/estadisticas/**").hasRole("DUENIO")
                         .requestMatchers("/api/gastos/**").hasRole("DUENIO")
                         .requestMatchers("/api/admins/**").hasRole("DUENIO")

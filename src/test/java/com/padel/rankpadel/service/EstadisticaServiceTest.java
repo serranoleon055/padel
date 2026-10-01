@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.YearMonth;
 import java.util.List;
@@ -25,7 +26,9 @@ import com.padel.rankpadel.entity.Gasto;
 import com.padel.rankpadel.entity.HorarioCancha;
 import com.padel.rankpadel.entity.Pago;
 import com.padel.rankpadel.entity.Reserva;
+import com.padel.rankpadel.entity.SolicitudInscripcion;
 import com.padel.rankpadel.entity.Torneo;
+import com.padel.rankpadel.enums.EstadoSolicitud;
 import com.padel.rankpadel.enums.CategoriaGasto;
 import com.padel.rankpadel.enums.EstadoPago;
 import com.padel.rankpadel.enums.EstadoReserva;
@@ -100,7 +103,7 @@ class EstadisticaServiceTest {
         when(reservaRepository.findParaEstadisticas(any(), any())).thenReturn(reservas);
         when(solicitudInscripcionRepository.findAll()).thenReturn(List.of());
         when(torneoRepository.findByActivoTrueAndEstadoIn(anyList())).thenReturn(List.of());
-        when(gastoRepository.findByFechaBetweenOrderByFechaDesc(any(), any())).thenReturn(gastos);
+        when(gastoRepository.findEntreFechas(any(), any())).thenReturn(gastos);
         when(ventaRepository.totalPorMes(any())).thenReturn(List.of());
     }
 
@@ -127,7 +130,7 @@ class EstadisticaServiceTest {
 
         when(reservaRepository.findParaEstadisticas(any(), any())).thenReturn(List.of());
         when(solicitudInscripcionRepository.findAll()).thenReturn(List.of());
-        when(gastoRepository.findByFechaBetweenOrderByFechaDesc(any(), any())).thenReturn(List.of());
+        when(gastoRepository.findEntreFechas(any(), any())).thenReturn(List.of());
         when(ventaRepository.totalPorMes(any())).thenReturn(List.of());
         when(torneoRepository.findByActivoTrueAndEstadoIn(anyList())).thenReturn(List.of(torneo));
         when(parejaRepository.contarPorTorneoYCategoria(anyList())).thenReturn(List.of(
@@ -162,7 +165,7 @@ class EstadisticaServiceTest {
 
         when(reservaRepository.findParaEstadisticas(any(), any())).thenReturn(List.of());
         when(solicitudInscripcionRepository.findAll()).thenReturn(List.of());
-        when(gastoRepository.findByFechaBetweenOrderByFechaDesc(any(), any())).thenReturn(List.of());
+        when(gastoRepository.findEntreFechas(any(), any())).thenReturn(List.of());
         when(ventaRepository.totalPorMes(any())).thenReturn(List.of());
         when(torneoRepository.findByActivoTrueAndEstadoIn(anyList())).thenReturn(List.of(torneo));
         when(parejaRepository.contarPorTorneoYCategoria(anyList())).thenReturn(List.<Object[]>of(
@@ -291,7 +294,7 @@ class EstadisticaServiceTest {
         assertThat(resumen.getVariacion()).isNull();
         assertThat(resumen.getFacturado()).isEqualByComparingTo("20000.00");
         assertThat(resumen.getTurnosJugados()).isEqualTo(1);
-        assertThat(resumen.getTicketPromedio()).isEqualByComparingTo("20000.00");
+        assertThat(resumen.getTicketPromedioTurno()).isEqualByComparingTo("20000.00");
     }
 
     @Test
@@ -301,7 +304,7 @@ class EstadisticaServiceTest {
                 .thenReturn(List.of(reserva(EstadoReserva.FINALIZADA, new BigDecimal("20000.00"), null)));
         when(solicitudInscripcionRepository.findAll()).thenReturn(List.of());
         when(torneoRepository.findByActivoTrueAndEstadoIn(anyList())).thenReturn(List.of());
-        when(gastoRepository.findByFechaBetweenOrderByFechaDesc(any(), any())).thenReturn(List.of());
+        when(gastoRepository.findEntreFechas(any(), any())).thenReturn(List.of());
         when(ventaRepository.totalPorMes(any()))
                 .thenReturn(List.of(ventasDelMes(YearMonth.now().toString(), "35000.00")));
 
@@ -340,5 +343,64 @@ class EstadisticaServiceTest {
 
         assertThat(respuesta.getReservasNoShow()).isEqualTo(1);
         assertThat(respuesta.getTasaNoShow()).isEqualTo(1d / 3d);
+    }
+
+    @Test
+    @DisplayName("Cambiar el costo del torneo no reescribe la facturación ya inscripta")
+    void inscripciones_usanElCostoCongelado() {
+        // El torneo hoy sale 30.000, pero esta pareja se inscribió cuando salía 10.000.
+        // Con el costo vivo, el mismo torneo del mes pasado valía distinto según el día en
+        // que se mirara el informe.
+        Torneo torneo = Torneo.builder()
+                .id(1L)
+                .nombre("Apertura")
+                .costoInscripcionJugador(new BigDecimal("30000.00"))
+                .build();
+        SolicitudInscripcion solicitud = SolicitudInscripcion.builder()
+                .id(1L)
+                .torneo(torneo)
+                .estado(EstadoSolicitud.APROBADA)
+                .costoAplicado(new BigDecimal("10000.00"))
+                .creadoEn(LocalDateTime.now())
+                .build();
+
+        conReservas(List.of());
+        when(solicitudInscripcionRepository.findAll()).thenReturn(List.of(solicitud));
+
+        // Dos integrantes por solicitud, los dos pagan: 10.000 x 2.
+        assertThat(estadisticaService.obtener(null).getMesActual().getFacturado())
+                .isEqualByComparingTo("20000.00");
+    }
+
+    @Test
+    @DisplayName("Las horas abiertas suman todas las bandas de horario de la cancha")
+    void horasAbiertas_sumaTodasLasBandas() {
+        // Dos bandas: semana de 18 a 23 (5 h) y fin de semana de 10 a 23 (13 h). Los días
+        // activos van como número de día de la semana (1 = lunes), no por nombre. Antes se
+        // tomaba solo la primera y se descartaba el resto, mientras que la apertura del
+        // lugar sí recorría todas: los dos cálculos asumían cosas distintas del mismo dato.
+        HorarioCancha semana = HorarioCancha.builder()
+                .horaApertura(LocalTime.of(18, 0)).horaCierre(LocalTime.of(23, 0))
+                .diasActivos("1,2,3,4,5").activo(true).build();
+        HorarioCancha finDeSemana = HorarioCancha.builder()
+                .horaApertura(LocalTime.of(10, 0)).horaCierre(LocalTime.of(23, 0))
+                .diasActivos("6,7").activo(true).build();
+
+        conReservas(List.of(reserva(EstadoReserva.FINALIZADA, new BigDecimal("20000.00"), null)));
+        when(canchaRepository.findByActivoTrue()).thenReturn(List.of(cancha));
+        when(horarioCanchaRepository.findByCanchaIdAndActivoTrue(1L))
+                .thenReturn(List.of(semana, finDeSemana));
+        when(ventaRepository.rankingProductos(any(), any())).thenReturn(List.of());
+        when(productoRepository.buscar(null, true)).thenReturn(List.of());
+        when(productoRepository.conStockBajo()).thenReturn(List.of());
+
+        long conLasDos = estadisticaService.obtener(null)
+                .getOcupacionPorCancha().get(0).getHorasDisponibles();
+
+        when(horarioCanchaRepository.findByCanchaIdAndActivoTrue(1L)).thenReturn(List.of(semana));
+        long soloSemana = estadisticaService.obtener(null)
+                .getOcupacionPorCancha().get(0).getHorasDisponibles();
+
+        assertThat(conLasDos).isGreaterThan(soloSemana);
     }
 }

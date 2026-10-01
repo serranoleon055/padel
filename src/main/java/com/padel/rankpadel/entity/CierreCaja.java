@@ -54,4 +54,21 @@ public class CierreCaja {
     private String cerradoPor;
     private LocalDateTime cerradoEn;
     private String notas;
+
+    /**
+     * Reapertura. Es baja lógica y no borrado: el arqueo es el único lugar donde consta
+     * que a alguien le faltó plata, así que reabrir no puede hacerlo desaparecer. La fila
+     * queda y la jornada vuelve a quedar abierta.
+     *
+     * <p>La columna generada {@code fecha_vigente} de V59 es la que deja que convivan
+     * varios arqueos anulados de la misma jornada y como máximo uno en pie. No se mapea
+     * acá a propósito: la calcula la base.
+     */
+    private LocalDateTime anuladoEn;
+    private String anuladoPor;
+    private String motivoReapertura;
+
+    public boolean estaVigente() {
+        return anuladoEn == null;
+    }
 }

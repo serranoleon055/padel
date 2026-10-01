@@ -10,8 +10,6 @@ import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,6 +28,8 @@ import com.padel.rankpadel.repository.ClienteRepository;
 import com.padel.rankpadel.repository.CobroRepository;
 import com.padel.rankpadel.repository.ReservaRepository;
 import com.padel.rankpadel.repository.VentaRepository;
+
+import com.padel.rankpadel.util.UsuarioActual;
 
 import lombok.RequiredArgsConstructor;
 
@@ -81,7 +81,7 @@ public class VentaService {
                 .medio(request.getMedio())
                 .cliente(cliente)
                 .reserva(reserva)
-                .registradoPor(usuarioActual())
+                .registradoPor(UsuarioActual.nombre())
                 .notas(request.getNotas())
                 .items(new ArrayList<>())
                 .total(BigDecimal.ZERO)
@@ -172,11 +172,11 @@ public class VentaService {
         }
 
         venta.setAnuladoEn(LocalDateTime.now());
-        venta.setAnuladoPor(usuarioActual());
+        venta.setAnuladoPor(UsuarioActual.nombre());
         venta.setMotivoAnulacion(motivo != null && !motivo.isBlank() ? motivo.trim() : null);
         ventaRepository.save(venta);
 
-        log.info("[caja] {} anuló la venta {} de ${}", usuarioActual(), id, venta.getTotal());
+        log.info("[caja] {} anuló la venta {} de ${}", UsuarioActual.nombre(), id, venta.getTotal());
         return aResponse(venta);
     }
 
@@ -229,11 +229,6 @@ public class VentaService {
         }
         return reservaRepository.findById(reservaId)
                 .orElseThrow(() -> new ResourceNotFoundException("Reserva", reservaId));
-    }
-
-    private String usuarioActual() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return auth != null ? auth.getName() : null;
     }
 
     VentaResponse aResponse(Venta venta) {

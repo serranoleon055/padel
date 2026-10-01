@@ -11,15 +11,46 @@ import org.springframework.data.repository.query.Param;
 import com.padel.rankpadel.entity.Gasto;
 import com.padel.rankpadel.enums.MedioPago;
 
+/**
+ * Todas las consultas filtran {@code anuladoEn IS NULL}: un gasto anulado sigue en la
+ * tabla para poder auditarlo, pero no suma en ningún total. Si se agrega una consulta
+ * acá, ese filtro va sí o sí, o el resultado del mes miente.
+ *
+ * <p>Y hay dos criterios de fecha a propósito, que no son intercambiables: la caja
+ * pregunta por {@code jornada} (el día en que la plata salió del cajón) y el estado de
+ * resultados por {@code fecha} (la fecha contable que eligió la persona).
+ */
 public interface GastoRepository extends JpaRepository<Gasto, Long> {
 
-    List<Gasto> findByFechaOrderByIdAsc(LocalDate fecha);
+    /** Los egresos de una jornada, para el detalle del arqueo. */
+    @Query("SELECT g FROM Gasto g WHERE g.jornada = :jornada AND g.anuladoEn IS NULL ORDER BY g.id ASC")
+    List<Gasto> findDeLaJornada(@Param("jornada") LocalDate jornada);
 
-    List<Gasto> findByFechaBetweenOrderByFechaDesc(LocalDate desde, LocalDate hasta);
+    /** Los anulados de la jornada, que el cierre muestra aparte. */
+    @Query("SELECT g FROM Gasto g WHERE g.jornada = :jornada AND g.anuladoEn IS NOT NULL ORDER BY g.id ASC")
+    List<Gasto> findAnuladosDeLaJornada(@Param("jornada") LocalDate jornada);
 
-    @Query("SELECT COALESCE(SUM(g.monto), 0) FROM Gasto g WHERE g.fecha = :fecha AND g.medio = :medio")
-    BigDecimal totalDelDiaPorMedio(@Param("fecha") LocalDate fecha, @Param("medio") MedioPago medio);
+    @Query("""
+            SELECT g FROM Gasto g
+            WHERE g.fecha BETWEEN :desde AND :hasta AND g.anuladoEn IS NULL
+            ORDER BY g.fecha DESC
+            """)
+    List<Gasto> findEntreFechas(@Param("desde") LocalDate desde, @Param("hasta") LocalDate hasta);
 
-    @Query("SELECT COALESCE(SUM(g.monto), 0) FROM Gasto g WHERE g.fecha = :fecha")
-    BigDecimal totalDelDia(@Param("fecha") LocalDate fecha);
+    /**
+     * Lo que salió del cajón en una jornada por un medio. Es lo que el arqueo resta del
+     * efectivo esperado: si se le pagó al gasista del cajón, esa plata ya no está.
+     */
+    @Query("""
+            SELECT COALESCE(SUM(g.monto), 0) FROM Gasto g
+            WHERE g.jornada = :jornada AND g.medio = :medio AND g.anuladoEn IS NULL
+            """)
+    BigDecimal totalDeLaJornadaPorMedio(@Param("jornada") LocalDate jornada,
+            @Param("medio") MedioPago medio);
+
+    @Query("""
+            SELECT COALESCE(SUM(g.monto), 0) FROM Gasto g
+            WHERE g.jornada = :jornada AND g.anuladoEn IS NULL
+            """)
+    BigDecimal totalDeLaJornada(@Param("jornada") LocalDate jornada);
 }

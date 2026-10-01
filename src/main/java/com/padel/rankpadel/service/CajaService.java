@@ -15,21 +15,23 @@ import java.util.Set;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.padel.rankpadel.dto.request.CierreCajaRequest;
+import com.padel.rankpadel.dto.response.ArqueoHistoricoResponse;
 import com.padel.rankpadel.dto.response.CierreCajaResponse;
 import com.padel.rankpadel.dto.response.CierreCajaResponse.TotalMedio;
-import com.padel.rankpadel.dto.response.CobroResponse;
 import com.padel.rankpadel.dto.response.MovimientoCajaResponse;
+import com.padel.rankpadel.dto.response.PagedResponse;
 import com.padel.rankpadel.entity.CierreCaja;
 import com.padel.rankpadel.entity.Cobro;
 import com.padel.rankpadel.entity.Pago;
 import com.padel.rankpadel.entity.Reserva;
 import com.padel.rankpadel.entity.Venta;
+import com.padel.rankpadel.enums.ConceptoPago;
 import com.padel.rankpadel.enums.EstadoPago;
 import com.padel.rankpadel.enums.EstadoReserva;
 import com.padel.rankpadel.enums.MedioPago;
@@ -42,6 +44,7 @@ import com.padel.rankpadel.repository.PagoRepository;
 import com.padel.rankpadel.repository.ReservaRepository;
 import com.padel.rankpadel.repository.VentaRepository;
 import com.padel.rankpadel.util.MontosReserva;
+import com.padel.rankpadel.util.UsuarioActual;
 
 import lombok.RequiredArgsConstructor;
 
@@ -116,18 +119,31 @@ public class CajaService {
 
         // Lo que salió del cajón también cuenta para el arqueo: si se pagó al gasista en
         // efectivo, esa plata ya no está aunque nadie la haya cobrado de menos.
-        BigDecimal egresos = gastoRepository.totalDelDia(jornada);
-        BigDecimal egresosEfectivo = gastoRepository.totalDelDiaPorMedio(jornada, MedioPago.EFECTIVO);
+        //
+        // Por JORNADA, igual que los ingresos. Hasta V58 los egresos se buscaban por día
+        // de calendario porque `gastos` no tenía la columna, así que un pago en efectivo
+        // a las 00:30 faltaba en el arqueo de esa noche y sobraba en el de la siguiente.
+        BigDecimal egresos = gastoRepository.totalDeLaJornada(jornada);
+        BigDecimal egresosEfectivo = gastoRepository.totalDeLaJornadaPorMedio(jornada, MedioPago.EFECTIVO);
         BigDecimal efectivoEsperado = totales.getOrDefault(MedioPago.EFECTIVO, BigDecimal.ZERO)
                 .subtract(egresosEfectivo);
 
         // Las señas de Mercado Pago se acreditan en la cuenta, no en el cajón: van
         // separadas para que el arqueo de efectivo cierre.
-        BigDecimal seniasOnline = pagoRepository
-                .findByEstadoAndJornada(EstadoPago.APROBADO, jornada).stream()
-                .map(Pago::getMontoSenia)
-                .filter(monto -> monto != null)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        //
+        // Y solo las de TURNO. Las inscripciones a torneos también entran por Mercado
+        // Pago y antes se sumaban acá, bajo un rótulo que dice "señas": el club veía como
+        // seña de cancha la plata de un torneo. Van en su propio campo.
+        Map<Boolean, BigDecimal> seniasPorConcepto = new HashMap<>();
+        for (Pago pago : pagoRepository.findByEstadoAndJornada(EstadoPago.APROBADO, jornada)) {
+            if (pago.getMontoSenia() == null) {
+                continue;
+            }
+            seniasPorConcepto.merge(ConceptoPago.RESERVA.equals(pago.getConcepto()),
+                    pago.getMontoSenia(), BigDecimal::add);
+        }
+        BigDecimal seniasOnline = seniasPorConcepto.getOrDefault(true, BigDecimal.ZERO);
+        BigDecimal inscripcionesOnline = seniasPorConcepto.getOrDefault(false, BigDecimal.ZERO);
 
         SaldoDelDia saldo = calcularSaldoPendiente(jornada);
 
@@ -137,22 +153,51 @@ public class CajaService {
                 .efectivoEsperado(efectivoEsperado)
                 .totalMostrador(totalMostrador)
                 .seniasOnline(seniasOnline)
-                .totalDelDia(totalMostrador.add(seniasOnline))
+                .inscripcionesOnline(inscripcionesOnline)
+                .totalDelDia(totalMostrador.add(seniasOnline).add(inscripcionesOnline))
                 .turnosConSaldo(saldo.turnos())
                 .saldoPendiente(saldo.monto())
                 .movimientos(agruparEnMovimientos(cobros))
                 .egresos(egresos)
                 .egresosEfectivo(egresosEfectivo)
-                .resultado(totalMostrador.add(seniasOnline).subtract(egresos))
-                .gastos(gastoService.listarDelDia(jornada))
+                .resultado(totalMostrador.add(seniasOnline).add(inscripcionesOnline).subtract(egresos))
+                .gastos(gastoService.listarDeLaJornada(jornada))
+                .gastosAnulados(gastoService.listarAnuladosDeLaJornada(jornada))
                 .ventas(ventas.stream().map(ventaService::aResponse).toList())
                 .totalVentas(ventas.stream().map(Venta::getTotal).reduce(BigDecimal.ZERO, BigDecimal::add))
-                .arqueo(cierreCajaRepository.findByFecha(jornada).map(this::aArqueo).orElse(null))
+                .arqueo(cierreCajaRepository.findByFechaAndAnuladoEnIsNull(jornada)
+                        .map(this::aArqueo).orElse(null))
                 .cobrosAnulados(cobroRepository.findAnuladosDeLaJornada(jornada).stream()
                         .map(cobroService::aResponse).toList())
                 .ventasAnuladas(ventaRepository.findAnuladasDeLaJornada(jornada).stream()
                         .map(ventaService::aResponse).toList())
                 .build();
+    }
+
+    /**
+     * El arqueo tal como lo ve quien lo pide. Es lo que usa el endpoint; {@link #cierre}
+     * sigue devolviendo todo porque lo necesita el propio cierre para congelar totales.
+     *
+     * <p>El empleado tiene que poder arquear —es el que cuenta el cajón—, así que el
+     * endpoint no se le puede cerrar. Pero la respuesta traía la lista entera de gastos,
+     * los egresos del mes y el resultado del negocio, que es justo lo que
+     * {@code /api/gastos/**} y {@code /api/estadisticas/**} le prohíben: se entraba por la
+     * ventana. Se le poda el detalle y se le deja lo que necesita para contar.
+     *
+     * <p>{@code egresosEfectivo} SÍ se conserva: sin ese número el efectivo esperado no se
+     * puede explicar, y un arqueo que no se entiende no se puede firmar.
+     */
+    @Transactional(readOnly = true)
+    public CierreCajaResponse cierreParaQuienPide(LocalDate jornada) {
+        CierreCajaResponse datos = cierre(jornada);
+        if (UsuarioActual.esDuenio()) {
+            return datos;
+        }
+        datos.setGastos(List.of());
+        datos.setGastosAnulados(List.of());
+        datos.setEgresos(null);
+        datos.setResultado(null);
+        return datos;
     }
 
     /**
@@ -163,7 +208,7 @@ public class CajaService {
     @Transactional
     public CierreCajaResponse cerrar(CierreCajaRequest request) {
         LocalDate fecha = request.getFecha();
-        if (cierreCajaRepository.existsByFecha(fecha)) {
+        if (cierreCajaRepository.existsByFechaAndAnuladoEnIsNull(fecha)) {
             throw new EstadoInvalidoException("La caja del " + fecha.format(DIA) + " ya está cerrada");
         }
         // Contra la jornada, no contra el calendario: a las 00:30 el club está cerrando la
@@ -183,7 +228,7 @@ public class CajaService {
                 .totalMostrador(actual.getTotalMostrador())
                 .seniasOnline(actual.getSeniasOnline())
                 .egresos(actual.getEgresos())
-                .cerradoPor(usuarioActual())
+                .cerradoPor(UsuarioActual.nombre())
                 .cerradoEn(LocalDateTime.now())
                 .notas(request.getNotas())
                 .build());
@@ -198,17 +243,65 @@ public class CajaService {
 
     /**
      * Reabre un día ya cerrado. Existe porque el error se descubre después: alguien cargó
-     * un cobro mal y recién se dio cuenta al otro día. Queda en el log quién lo reabrió.
+     * un cobro mal y recién se dio cuenta al otro día.
+     *
+     * <p>Es baja lógica, no borrado. El arqueo es el único lugar donde consta que a
+     * alguien le faltó plata, así que reabrir no puede hacerlo desaparecer: la fila queda
+     * anulada y el historial muestra que ese día se reabrió, quién lo hizo y con qué
+     * diferencia se había firmado. Hasta V59 se borraba, y después de reabrir no quedaba
+     * en la base ni quién había contado ni cuánto.
      */
     @Transactional
-    public CierreCajaResponse reabrir(LocalDate fecha) {
-        CierreCaja cierre = cierreCajaRepository.findByFecha(fecha)
+    public CierreCajaResponse reabrir(LocalDate fecha, String motivo) {
+        CierreCaja cierre = cierreCajaRepository.findByFechaAndAnuladoEnIsNull(fecha)
                 .orElseThrow(() -> new EstadoInvalidoException(
                         "La caja del " + fecha.format(DIA) + " no está cerrada"));
-        log.warn("[caja] {} reabrió el cierre del {} (lo había cerrado {} con diferencia ${})",
-                usuarioActual(), fecha, cierre.getCerradoPor(), cierre.getDiferencia());
-        cierreCajaRepository.delete(cierre);
+        cierre.setAnuladoEn(LocalDateTime.now());
+        cierre.setAnuladoPor(UsuarioActual.nombre());
+        cierre.setMotivoReapertura(motivo);
+        cierreCajaRepository.save(cierre);
+        log.warn("[caja] {} reabrió el cierre del {} (lo había cerrado {} con diferencia ${}). Motivo: {}",
+                cierre.getAnuladoPor(), fecha, cierre.getCerradoPor(), cierre.getDiferencia(), motivo);
         return cierre(fecha);
+    }
+
+    /**
+     * El historial de arqueos, reaperturas incluidas: el dueño necesita ver si siempre
+     * falta plata el mismo día de la semana o en el mismo turno. El repositorio tenía el
+     * método desde V51 y no lo llamaba nadie.
+     */
+    @Transactional(readOnly = true)
+    public PagedResponse<ArqueoHistoricoResponse> historial(int pagina, int tamanio) {
+        Page<CierreCaja> cierres = cierreCajaRepository
+                .findAllByOrderByFechaDescIdDesc(PageRequest.of(pagina, tamanio));
+        return PagedResponse.<ArqueoHistoricoResponse>builder()
+                .contenido(cierres.getContent().stream().map(this::aHistorico).toList())
+                .totalElementos(cierres.getTotalElements())
+                .totalPaginas(cierres.getTotalPages())
+                .pagina(pagina)
+                .tamanio(tamanio)
+                .esPrimera(cierres.isFirst())
+                .esUltima(cierres.isLast())
+                .build();
+    }
+
+    private ArqueoHistoricoResponse aHistorico(CierreCaja cierre) {
+        return ArqueoHistoricoResponse.builder()
+                .id(cierre.getId())
+                .fecha(cierre.getFecha())
+                .efectivoEsperado(cierre.getEfectivoEsperado())
+                .efectivoContado(cierre.getEfectivoContado())
+                .diferencia(cierre.getDiferencia())
+                .totalMostrador(cierre.getTotalMostrador())
+                .seniasOnline(cierre.getSeniasOnline())
+                .egresos(cierre.getEgresos())
+                .cerradoPor(cierre.getCerradoPor())
+                .cerradoEn(cierre.getCerradoEn())
+                .notas(cierre.getNotas())
+                .reabiertoEn(cierre.getAnuladoEn())
+                .reabiertoPor(cierre.getAnuladoPor())
+                .motivoReapertura(cierre.getMotivoReapertura())
+                .build();
     }
 
     private CierreCajaResponse.Arqueo aArqueo(CierreCaja cierre) {
@@ -221,22 +314,10 @@ public class CajaService {
                 .build();
     }
 
-    private String usuarioActual() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return auth != null ? auth.getName() : null;
-    }
-
     /** La jornada que el club está atendiendo: la que abre la caja si no se elige otra. */
     @Transactional(readOnly = true)
     public LocalDate jornadaActual() {
         return disponibilidadCanchaService.fechaDeJornadaActual();
-    }
-
-    @Transactional(readOnly = true)
-    public List<CobroResponse> movimientosDe(LocalDate jornada) {
-        return cobroRepository.findDeLaJornada(jornada).stream()
-                .map(cobroService::aResponse)
-                .toList();
     }
 
     /**

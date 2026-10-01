@@ -8,8 +8,6 @@ import java.util.Set;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,6 +22,8 @@ import com.padel.rankpadel.repository.CobroRepository;
 import com.padel.rankpadel.repository.ReservaRepository;
 import com.padel.rankpadel.repository.VentaRepository;
 import com.padel.rankpadel.util.MontosReserva;
+
+import com.padel.rankpadel.util.UsuarioActual;
 
 import lombok.RequiredArgsConstructor;
 
@@ -83,7 +83,7 @@ public class CobroService {
                 .medio(request.getMedio())
                 .cobradoEn(LocalDateTime.now())
                 .jornada(jornada)
-                .registradoPor(usuarioActual())
+                .registradoPor(UsuarioActual.nombre())
                 .notas(request.getNotas())
                 .build());
 
@@ -112,12 +112,12 @@ public class CobroService {
         cajaCerradaGuard.exigirDiaAbierto(cobro.getJornada());
 
         cobro.setAnuladoEn(LocalDateTime.now());
-        cobro.setAnuladoPor(usuarioActual());
+        cobro.setAnuladoPor(UsuarioActual.nombre());
         cobro.setMotivoAnulacion(motivo != null && !motivo.isBlank() ? motivo.trim() : null);
         cobroRepository.save(cobro);
 
         log.info("[caja] {} anuló el cobro {} de ${} ({}) de la reserva {}",
-                usuarioActual(), id, cobro.getMonto(), cobro.getMedio(),
+                UsuarioActual.nombre(), id, cobro.getMonto(), cobro.getMedio(),
                 cobro.getReserva() != null ? cobro.getReserva().getId() : null);
         return aResponse(cobro);
     }
@@ -127,11 +127,6 @@ public class CobroService {
                 .findFirst()
                 .map(VentaRepository.ConsumoPorReserva::getTotal)
                 .orElse(BigDecimal.ZERO);
-    }
-
-    private String usuarioActual() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return auth != null ? auth.getName() : null;
     }
 
     CobroResponse aResponse(Cobro cobro) {

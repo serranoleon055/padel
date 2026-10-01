@@ -3,6 +3,9 @@ package com.padel.rankpadel.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -20,10 +23,10 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import com.padel.rankpadel.dto.request.GastoRequest;
 import com.padel.rankpadel.dto.request.MovimientoStockRequest;
 import com.padel.rankpadel.dto.request.ProductoRequest;
 import com.padel.rankpadel.dto.response.ProductoResponse;
-import com.padel.rankpadel.entity.Gasto;
 import com.padel.rankpadel.entity.MovimientoStock;
 import com.padel.rankpadel.entity.Producto;
 import com.padel.rankpadel.enums.CategoriaGasto;
@@ -31,7 +34,6 @@ import com.padel.rankpadel.enums.CategoriaProducto;
 import com.padel.rankpadel.enums.MedioPago;
 import com.padel.rankpadel.enums.MotivoMovimientoStock;
 import com.padel.rankpadel.exception.EstadoInvalidoException;
-import com.padel.rankpadel.repository.GastoRepository;
 import com.padel.rankpadel.repository.MovimientoStockRepository;
 import com.padel.rankpadel.repository.ProductoRepository;
 import com.padel.rankpadel.repository.ProveedorRepository;
@@ -47,7 +49,7 @@ class ProductoServiceTest {
     @Mock
     private MovimientoStockRepository movimientoStockRepository;
     @Mock
-    private GastoRepository gastoRepository;
+    private GastoService gastoService;
 
     @InjectMocks
     private ProductoService productoService;
@@ -93,8 +95,11 @@ class ProductoServiceTest {
 
             productoService.comprar(1L, compra(10, "13500", MedioPago.EFECTIVO));
 
-            ArgumentCaptor<Gasto> gasto = ArgumentCaptor.forClass(Gasto.class);
-            verify(gastoRepository).save(gasto.capture());
+            // El egreso lo arma GastoService y no esta clase: así hereda los controles de
+            // fecha futura y de caja cerrada, que es lo que se salteaba cuando la compra
+            // insertaba el Gasto por su cuenta.
+            ArgumentCaptor<GastoRequest> gasto = ArgumentCaptor.forClass(GastoRequest.class);
+            verify(gastoService).registrarEntidad(gasto.capture(), any(), eq(true));
             assertThat(gasto.getValue().getMonto()).isEqualByComparingTo("135000");
             assertThat(gasto.getValue().getCategoria()).isEqualTo(CategoriaGasto.INSUMOS);
             assertThat(gasto.getValue().getMedio()).isEqualTo(MedioPago.EFECTIVO);
@@ -107,7 +112,26 @@ class ProductoServiceTest {
 
             productoService.comprar(1L, compra(10, "13500", null));
 
-            verify(gastoRepository, never()).save(any());
+            verify(gastoService, never()).registrarEntidad(any(), any(), anyBoolean());
+        }
+
+        @Test
+        @DisplayName("Con la caja de la jornada arqueada, la compra no entra ni al stock")
+        void comprar_jornadaCerrada_niStockNiEgreso() {
+            // La compra armaba el Gasto por su cuenta y por eso se salteaba el control de
+            // caja cerrada: se podía meter plata en una jornada con el arqueo ya firmado.
+            // Ahora el egreso va primero, así que si lo rechazan el stock tampoco se mueve.
+            Producto pelotas = pelotas(0);
+            when(productoRepository.findById(1L)).thenReturn(Optional.of(pelotas));
+            doThrow(new EstadoInvalidoException("La caja del 15/08/2026 ya está cerrada"))
+                    .when(gastoService).registrarEntidad(any(), any(), anyBoolean());
+
+            assertThatThrownBy(() -> productoService.comprar(1L, compra(10, "13500", MedioPago.EFECTIVO)))
+                    .isInstanceOf(EstadoInvalidoException.class)
+                    .hasMessageContaining("cerrada");
+
+            assertThat(pelotas.getStock()).isZero();
+            verify(movimientoStockRepository, never()).save(any());
         }
 
         @Test

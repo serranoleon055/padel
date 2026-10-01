@@ -45,24 +45,20 @@ public interface VentaRepository extends JpaRepository<Venta, Long> {
         """)
     List<Venta> findAnuladasDeLaJornada(@Param("jornada") LocalDate jornada);
 
-    @Query("SELECT COALESCE(SUM(v.total), 0) FROM Venta v "
-            + "WHERE v.fecha >= :desde AND v.fecha < :hasta AND v.anuladoEn IS NULL")
-    BigDecimal totalEntre(@Param("desde") LocalDateTime desde, @Param("hasta") LocalDateTime hasta);
-
+    /**
+     * Facturación de mostrador por mes, para sumarla al panel de rentabilidad.
+     *
+     * <p>Agrupa por JORNADA, no por {@code fecha}: una venta de la 1 de la mañana del día
+     * 1 es de la noche del último día del mes anterior, y la caja ya la puso ahí. Con el
+     * criterio de calendario, las estadísticas del mes y la suma de los arqueos no
+     * cuadraban justo en las noches de fin de mes.
+     */
     @Query("""
-        SELECT COALESCE(SUM(v.total), 0) FROM Venta v
-        WHERE v.fecha >= :desde AND v.fecha < :hasta AND v.medio = :medio AND v.anuladoEn IS NULL
+        SELECT FUNCTION('DATE_FORMAT', v.jornada, '%Y-%m') AS mes, COALESCE(SUM(v.total), 0) AS total
+        FROM Venta v WHERE v.jornada >= :desde AND v.anuladoEn IS NULL
+        GROUP BY FUNCTION('DATE_FORMAT', v.jornada, '%Y-%m')
         """)
-    BigDecimal totalEntrePorMedio(@Param("desde") LocalDateTime desde, @Param("hasta") LocalDateTime hasta,
-            @Param("medio") com.padel.rankpadel.enums.MedioPago medio);
-
-    /** Facturación de mostrador por mes, para sumarla al panel de rentabilidad. */
-    @Query("""
-        SELECT FUNCTION('DATE_FORMAT', v.fecha, '%Y-%m') AS mes, COALESCE(SUM(v.total), 0) AS total
-        FROM Venta v WHERE v.fecha >= :desde AND v.anuladoEn IS NULL
-        GROUP BY FUNCTION('DATE_FORMAT', v.fecha, '%Y-%m')
-        """)
-    List<TotalPorMes> totalPorMes(@Param("desde") LocalDateTime desde);
+    List<TotalPorMes> totalPorMes(@Param("desde") LocalDate desde);
 
     /**
      * Costo de la mercadería VENDIDA por mes, con el costo congelado en cada renglón.
@@ -73,30 +69,41 @@ public interface VentaRepository extends JpaRepository<Venta, Long> {
      * vea en rojo aunque no se haya vendido nada todavía.
      */
     @Query("""
-        SELECT FUNCTION('DATE_FORMAT', v.fecha, '%Y-%m') AS mes,
+        SELECT FUNCTION('DATE_FORMAT', v.jornada, '%Y-%m') AS mes,
                COALESCE(SUM(COALESCE(i.costoUnitario, 0) * i.cantidad), 0) AS total
         FROM VentaItem i JOIN i.venta v
-        WHERE v.fecha >= :desde AND v.anuladoEn IS NULL
-        GROUP BY FUNCTION('DATE_FORMAT', v.fecha, '%Y-%m')
+        WHERE v.jornada >= :desde AND v.anuladoEn IS NULL
+        GROUP BY FUNCTION('DATE_FORMAT', v.jornada, '%Y-%m')
         """)
-    List<TotalPorMes> costoMercaderiaVendidaPorMes(@Param("desde") LocalDateTime desde);
+    List<TotalPorMes> costoMercaderiaVendidaPorMes(@Param("desde") LocalDate desde);
 
     /**
      * Ranking de productos en un período: unidades, facturación y ganancia. Todo en una
      * consulta agrupada; recorrer las ventas en Java sería un N+1 disfrazado.
+     *
+     * <p>Las unidades vendidas SIN costo cargado se cuentan aparte, en vez de aportar
+     * ganancia cero. El costo es opcional —el club puede no saber todavía cuánto le sale
+     * algo—, y con un {@code COALESCE} a cero un producto sin costo aparecía con ganancia
+     * 0 y margen 0%, indistinguible de uno que se vende a pérdida, y arrastraba la
+     * ganancia del kiosco para abajo. Ahora la ganancia es la de lo que SÍ tiene costo, y
+     * {@code unidadesSinCosto} le dice al panel que ese número está incompleto.
      */
     @Query("""
         SELECT p.id AS productoId,
                p.nombre AS nombre,
                SUM(i.cantidad) AS unidades,
                SUM(i.precioUnitario * i.cantidad) AS facturado,
-               SUM(COALESCE(i.precioUnitario - i.costoUnitario, 0) * i.cantidad) AS ganancia
+               SUM(CASE WHEN i.costoUnitario IS NULL THEN 0
+                        ELSE (i.precioUnitario - i.costoUnitario) * i.cantidad END) AS ganancia,
+               SUM(CASE WHEN i.costoUnitario IS NULL THEN i.cantidad ELSE 0 END) AS unidadesSinCosto,
+               SUM(CASE WHEN i.costoUnitario IS NULL THEN 0
+                        ELSE i.precioUnitario * i.cantidad END) AS facturadoConCosto
         FROM VentaItem i JOIN i.venta v JOIN i.producto p
-        WHERE v.fecha >= :desde AND v.fecha < :hasta AND v.anuladoEn IS NULL
+        WHERE v.jornada >= :desde AND v.jornada <= :hasta AND v.anuladoEn IS NULL
         GROUP BY p.id, p.nombre
         ORDER BY SUM(i.precioUnitario * i.cantidad) DESC
         """)
-    List<VentaPorProducto> rankingProductos(@Param("desde") LocalDateTime desde, @Param("hasta") LocalDateTime hasta);
+    List<VentaPorProducto> rankingProductos(@Param("desde") LocalDate desde, @Param("hasta") LocalDate hasta);
 
     interface TotalPorMes {
         String getMes();
@@ -113,7 +120,14 @@ public interface VentaRepository extends JpaRepository<Venta, Long> {
 
         BigDecimal getFacturado();
 
+        /** Ganancia de lo que tiene costo cargado. */
         BigDecimal getGanancia();
+
+        /** Unidades vendidas sin costo cargado: el margen de esas no se puede calcular. */
+        long getUnidadesSinCosto();
+
+        /** Facturación de lo que SÍ tiene costo, que es sobre lo que se mide el margen. */
+        BigDecimal getFacturadoConCosto();
     }
 
     /** Ventas cargadas a un turno, para cobrarlas junto con la cancha. */
@@ -143,6 +157,4 @@ public interface VentaRepository extends JpaRepository<Venta, Long> {
             + "AND v.anuladoEn IS NULL ORDER BY v.fecha DESC")
     List<Venta> findComprasDelCliente(@Param("clienteId") Long clienteId, @Param("desde") LocalDateTime desde);
 
-    @Query("SELECT COUNT(v) FROM Venta v WHERE FUNCTION('DATE', v.fecha) = :fecha AND v.anuladoEn IS NULL")
-    long cantidadDelDia(@Param("fecha") LocalDate fecha);
 }

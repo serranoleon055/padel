@@ -18,9 +18,11 @@ import org.springframework.web.bind.annotation.RestController;
 import com.padel.rankpadel.dto.request.CierreCajaRequest;
 import com.padel.rankpadel.dto.request.CobroRequest;
 import com.padel.rankpadel.dto.request.GastoRequest;
+import com.padel.rankpadel.dto.response.ArqueoHistoricoResponse;
 import com.padel.rankpadel.dto.response.CierreCajaResponse;
 import com.padel.rankpadel.dto.response.CobroResponse;
 import com.padel.rankpadel.dto.response.GastoResponse;
+import com.padel.rankpadel.dto.response.PagedResponse;
 import com.padel.rankpadel.service.CajaService;
 import com.padel.rankpadel.service.CobroService;
 import com.padel.rankpadel.service.GastoService;
@@ -65,7 +67,19 @@ public class CajaController {
     @GetMapping("/caja")
     public ResponseEntity<CierreCajaResponse> cierre(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha) {
-        return ResponseEntity.ok(cajaService.cierre(fecha != null ? fecha : cajaService.jornadaActual()));
+        // Para quien pide: el empleado necesita el arqueo para contar el cajón, pero no
+        // el detalle de los gastos ni la rentabilidad, que es lo que /api/gastos/** y
+        // /api/estadisticas/** le prohíben y acá se estaba filtrando igual.
+        return ResponseEntity.ok(
+                cajaService.cierreParaQuienPide(fecha != null ? fecha : cajaService.jornadaActual()));
+    }
+
+    /** El historial de arqueos firmados, reaperturas incluidas. */
+    @GetMapping("/caja/cierres")
+    public ResponseEntity<PagedResponse<ArqueoHistoricoResponse>> historial(
+            @RequestParam(defaultValue = "0") int pagina,
+            @RequestParam(defaultValue = "20") int tamanio) {
+        return ResponseEntity.ok(cajaService.historial(pagina, tamanio));
     }
 
     /** Firma el arqueo del día: alguien contó el cajón y deja asentado cuánto había. */
@@ -74,11 +88,15 @@ public class CajaController {
         return ResponseEntity.status(HttpStatus.CREATED).body(cajaService.cerrar(request));
     }
 
-    /** Reabre un día cerrado para poder corregirlo. Queda registrado en el log. */
+    /**
+     * Reabre un día cerrado para poder corregirlo. El arqueo firmado no se borra: queda
+     * anulado en el historial, con quién lo reabrió y por qué.
+     */
     @DeleteMapping("/caja/cierre")
     public ResponseEntity<CierreCajaResponse> reabrir(
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha) {
-        return ResponseEntity.ok(cajaService.reabrir(fecha));
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha,
+            @RequestParam(required = false) String motivo) {
+        return ResponseEntity.ok(cajaService.reabrir(fecha, motivo));
     }
 
     @PostMapping("/gastos")
@@ -99,9 +117,14 @@ public class CajaController {
         return ResponseEntity.ok(gastoService.actualizar(id, request));
     }
 
+    /**
+     * Anula el gasto. Es baja lógica: la fila queda para poder auditarla, igual que los
+     * cobros y las ventas anuladas.
+     */
     @DeleteMapping("/gastos/{id}")
-    public ResponseEntity<Void> eliminarGasto(@PathVariable Long id) {
-        gastoService.eliminar(id);
+    public ResponseEntity<Void> anularGasto(@PathVariable Long id,
+            @RequestParam(required = false) String motivo) {
+        gastoService.anular(id, motivo);
         return ResponseEntity.noContent().build();
     }
 }

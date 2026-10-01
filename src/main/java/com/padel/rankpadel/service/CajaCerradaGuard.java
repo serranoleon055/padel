@@ -27,16 +27,17 @@ public class CajaCerradaGuard {
 
     private final CierreCajaRepository cierreCajaRepository;
 
+    /**
+     * @param jornada jornada del club a la que entraría el movimiento, no el día de
+     *                calendario: a las 00:30 se sigue trabajando sobre la noche de ayer
+     */
     @Transactional(readOnly = true)
-    public void exigirDiaAbierto(LocalDate fecha) {
-        if (fecha != null && cierreCajaRepository.existsByFecha(fecha)) {
-            throw new EstadoInvalidoException("La caja del " + fecha.format(DIA)
+    public void exigirDiaAbierto(LocalDate jornada) {
+        // Solo el arqueo vigente cierra la jornada. Los reabiertos quedan en la tabla
+        // desde V59 y no tienen que bloquear nada: justamente se reabrieron para corregir.
+        if (jornada != null && cierreCajaRepository.existsByFechaAndAnuladoEnIsNull(jornada)) {
+            throw new EstadoInvalidoException("La caja del " + jornada.format(DIA)
                     + " ya está cerrada. Para corregir algo de ese día hay que reabrirla primero.");
         }
-    }
-
-    @Transactional(readOnly = true)
-    public boolean estaCerrada(LocalDate fecha) {
-        return fecha != null && cierreCajaRepository.existsByFecha(fecha);
     }
 }

@@ -91,13 +91,26 @@ public class EstadisticaService {
             EstadoReserva.CANCELADA, EstadoReserva.RECHAZADA, EstadoReserva.EXPIRADA);
     private static final int TOP_PRODUCTOS = 8;
     private static final int TOP_CLIENTES = 8;
+
+    /**
+     * Cuántos meses mira el panel, contando el actual. Estaba escrito a mano en tres
+     * lugares distintos y había que acordarse de cambiar los tres.
+     */
+    private static final int MESES_DEL_PANEL = 6;
+
+    /**
+     * Una solicitud de inscripción tiene exactamente dos integrantes, y los dos pagan.
+     * Está acá y no escrito en el cálculo para que se vea que es un supuesto del modelo
+     * (la pareja de pádel) y no una constante mágica.
+     */
+    private static final int INTEGRANTES_POR_SOLICITUD = 2;
     private static final List<EstadoTorneo> TORNEOS_ABIERTOS = List.of(
             EstadoTorneo.INSCRIPCION, EstadoTorneo.SORTEADO, EstadoTorneo.EN_CURSO);
 
     @Transactional(readOnly = true)
     public EstadisticasResponse obtener(Long lugarId) {
         LocalDate hoy = LocalDate.now();
-        LocalDate desde = YearMonth.from(hoy).minusMonths(5).atDay(1);
+        LocalDate desde = YearMonth.from(hoy).minusMonths(MESES_DEL_PANEL - 1).atDay(1);
 
         List<Reserva> reservas = reservaRepository.findParaEstadisticas(desde, hoy).stream()
                 .filter(reserva -> deLugar(reserva, lugarId))
@@ -115,7 +128,7 @@ public class EstadisticaService {
                 .filter(solicitud -> solicitud.getTorneo() != null && deLugarTorneo(solicitud.getTorneo(), lugarId))
                 .toList();
 
-        List<Gasto> gastos = gastoRepository.findByFechaBetweenOrderByFechaDesc(desde, hoy);
+        List<Gasto> gastos = gastoRepository.findEntreFechas(desde, hoy);
         List<IngresoMes> ingresosPorMes = calcularIngresosPorMes(hoy, ocupadas, solicitudes, gastos);
 
         long reservasTotales = reservas.size();
@@ -248,7 +261,7 @@ public class EstadisticaService {
                 .variacion(variacion(facturado, facturadoAnterior))
                 .resultado(actual != null ? actual.getResultado() : BigDecimal.ZERO)
                 .turnosJugados(turnos)
-                .ticketPromedio(ticket)
+                .ticketPromedioTurno(ticket)
                 .ocupacion(ocupacion)
                 .ingresoPorHoraAbierta(porHora)
                 .deudaAcumulada(calcularDeuda(jugadosDelMes))
@@ -353,24 +366,34 @@ public class EstadisticaService {
      * Horas que una cancha estuvo abierta entre dos fechas, según su horario de atención
      * y los días que el club abre.
      */
+    /**
+     * Las horas que la cancha estuvo abierta en el período, sumando TODAS sus bandas
+     * activas. Varios horarios activos de la misma cancha son bandas por día de la semana
+     * —una para la semana y otra para el fin de semana—, y cada banda aporta solo los
+     * días que tiene marcados, así que sumarlas no duplica horas.
+     *
+     * <p>Antes se tomaba {@code horarios.get(0)} y se descartaba el resto, mientras que
+     * {@code horaAperturaDelLugar} sí recorría todos: los dos métodos asumían
+     * multiplicidades distintas del mismo dato, y el día que una cancha tenga dos bandas
+     * la ocupación salía mal y la apertura bien.
+     */
     private long horasAbiertas(Long canchaId, LocalDate desde, LocalDate hasta) {
-        List<HorarioCancha> horarios = horarioCanchaRepository.findByCanchaIdAndActivoTrue(canchaId);
-        if (horarios.isEmpty()) {
-            return 0;
+        long total = 0;
+        for (HorarioCancha horario : horarioCanchaRepository.findByCanchaIdAndActivoTrue(canchaId)) {
+            if (horario.getHoraApertura() == null || horario.getHoraCierre() == null) {
+                continue;
+            }
+            long horasPorDia = Duration.between(horario.getHoraApertura(), horario.getHoraCierre()).toHours();
+            if (horasPorDia <= 0) {
+                // Cierra después de medianoche: la jornada cruza el día.
+                horasPorDia += 24;
+            }
+            long dias = desde.datesUntil(hasta.plusDays(1))
+                    .filter(dia -> diaActivo(horario.getDiasActivos(), dia))
+                    .count();
+            total += horasPorDia * dias;
         }
-        HorarioCancha horario = horarios.get(0);
-        if (horario.getHoraApertura() == null || horario.getHoraCierre() == null) {
-            return 0;
-        }
-        long horasPorDia = Duration.between(horario.getHoraApertura(), horario.getHoraCierre()).toHours();
-        if (horasPorDia <= 0) {
-            // Cierra después de medianoche: la jornada cruza el día.
-            horasPorDia += 24;
-        }
-        long dias = desde.datesUntil(hasta.plusDays(1))
-                .filter(dia -> diaActivo(horario.getDiasActivos(), dia))
-                .count();
-        return horasPorDia * dias;
+        return total;
     }
 
     private boolean diaActivo(String diasActivos, LocalDate fecha) {
@@ -391,16 +414,25 @@ public class EstadisticaService {
      * producto que vende mucho con margen chico puede dejar menos que uno que vende poco.
      */
     private List<ProductoRendimiento> calcularRendimientoProductos(LocalDate desde, LocalDate hasta) {
-        return ventaRepository.rankingProductos(desde.atStartOfDay(), hasta.plusDays(1).atStartOfDay()).stream()
+        return ventaRepository.rankingProductos(desde, hasta).stream()
                 .map(fila -> ProductoRendimiento.builder()
                         .productoId(fila.getProductoId())
                         .nombre(fila.getNombre())
                         .unidades(fila.getUnidades())
                         .facturado(fila.getFacturado())
                         .ganancia(fila.getGanancia())
-                        .margen(fila.getFacturado() != null && fila.getFacturado().compareTo(BigDecimal.ZERO) > 0
-                                ? fila.getGanancia().divide(fila.getFacturado(), 4, RoundingMode.HALF_UP).doubleValue()
-                                : null)
+                        .unidadesSinCosto(fila.getUnidadesSinCosto())
+                        // El margen se mide sobre lo que tiene costo cargado. Dividir por
+                        // la facturación total daría un margen diluido por los renglones
+                        // cuyo costo el club todavía no cargó, y eso no es un margen bajo:
+                        // es un dato que falta. Si no hay NADA con costo, viaja null y la
+                        // pantalla lo dice.
+                        .margen(fila.getFacturadoConCosto() != null
+                                && fila.getFacturadoConCosto().compareTo(BigDecimal.ZERO) > 0
+                                        ? fila.getGanancia()
+                                                .divide(fila.getFacturadoConCosto(), 4, RoundingMode.HALF_UP)
+                                                .doubleValue()
+                                        : null)
                         .build())
                 .sorted(Comparator.comparing(ProductoRendimiento::getGanancia).reversed())
                 .toList();
@@ -473,7 +505,7 @@ public class EstadisticaService {
 
         // Una sola consulta agrupada para los seis meses: recorrer las ventas en Java
         // sería traer todos los renglones del semestre para sumarlos.
-        LocalDateTime desdeVentas = actual.minusMonths(5).atDay(1).atStartOfDay();
+        LocalDate desdeVentas = actual.minusMonths(MESES_DEL_PANEL - 1).atDay(1);
         Map<String, BigDecimal> ventasPorMes = new HashMap<>();
         for (VentaRepository.TotalPorMes fila : ventaRepository.totalPorMes(desdeVentas)) {
             ventasPorMes.put(fila.getMes(), fila.getTotal());
@@ -483,7 +515,7 @@ public class EstadisticaService {
             costoPorMes.put(fila.getMes(), fila.getTotal());
         }
 
-        for (int i = 5; i >= 0; i--) {
+        for (int i = MESES_DEL_PANEL - 1; i >= 0; i--) {
             YearMonth mes = actual.minusMonths(i);
             BigDecimal turnos = ocupadas.stream()
                     .filter(reserva -> YearMonth.from(reserva.getFecha()).equals(mes))
@@ -496,19 +528,22 @@ public class EstadisticaService {
                     .map(this::ingresoSolicitud)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
             // Los gastos se parten en dos: la compra de mercadería es inventario (queda en
-            // el stock hasta venderse) y el resto son gastos operativos del mes. El
-            // discriminador es `Gasto.producto`, que solo lo tienen las compras. Meter la
+            // el stock hasta venderse) y el resto son gastos operativos del mes. Meter la
             // compra en los gastos Y restar el costo de lo vendido contaría dos veces la
             // misma plata.
+            //
+            // El discriminador es el flag `esMercaderia` y no `Gasto.producto`: una compra
+            // con varios productos en un solo comprobante no puede apuntar a uno, así que
+            // mirando el producto se habría colado como gasto operativo.
             List<Gasto> delMes = gastos.stream()
                     .filter(gasto -> gasto.getFecha() != null && YearMonth.from(gasto.getFecha()).equals(mes))
                     .toList();
             BigDecimal gastosOperativos = delMes.stream()
-                    .filter(gasto -> gasto.getProducto() == null)
+                    .filter(gasto -> !gasto.isEsMercaderia())
                     .map(Gasto::getMonto)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
             BigDecimal comprasMercaderia = delMes.stream()
-                    .filter(gasto -> gasto.getProducto() != null)
+                    .filter(Gasto::isEsMercaderia)
                     .map(Gasto::getMonto)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
 
@@ -648,9 +683,23 @@ public class EstadisticaService {
                 .toList();
     }
 
+    /**
+     * Lo que facturó una inscripción. Usa el costo CONGELADO en la solicitud, no el del
+     * torneo: con el costo vivo, cambiar el precio de inscripción reescribía la
+     * facturación de todos los meses pasados, y el mismo torneo de julio valía distinto
+     * según el día en que se mirara el informe. Mismo criterio que
+     * {@code Reserva.precioAplicado} y {@code VentaItem.precioUnitario}.
+     *
+     * <p>Las solicitudes viejas, de antes de que existiera la columna, caen al costo del
+     * torneo: es el único dato que hay.
+     */
     private BigDecimal ingresoSolicitud(SolicitudInscripcion solicitud) {
-        BigDecimal costo = solicitud.getTorneo().getCostoInscripcionJugador();
-        return costo != null ? costo.multiply(BigDecimal.valueOf(2)) : BigDecimal.ZERO;
+        BigDecimal costo = solicitud.getCostoAplicado() != null
+                ? solicitud.getCostoAplicado()
+                : solicitud.getTorneo().getCostoInscripcionJugador();
+        return costo != null
+                ? costo.multiply(BigDecimal.valueOf(INTEGRANTES_POR_SOLICITUD))
+                : BigDecimal.ZERO;
     }
 
     private boolean deLugar(Reserva reserva, Long lugarId) {

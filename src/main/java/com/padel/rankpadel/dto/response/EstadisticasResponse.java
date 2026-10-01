@@ -57,8 +57,14 @@ public class EstadisticasResponse {
         private Double variacion;
         private BigDecimal resultado;
         private long turnosJugados;
-        /** Cancha + consumo promedio por turno: cuánto deja cada grupo que entra. */
-        private BigDecimal ticketPromedio;
+        /**
+         * Lo que deja en promedio cada turno, SOLO por la cancha: el consumo del kiosco
+         * no entra. El rótulo decía "cancha + consumo" y la cuenta nunca lo fue; se
+         * corrigió el nombre y no el número, porque mezclar los dos criterios (el
+         * devengado de la cancha con el consumo cobrado) daría un promedio que no se
+         * puede explicar con ninguna de las dos pantallas.
+         */
+        private BigDecimal ticketPromedioTurno;
         /** Porcentaje de horas vendidas sobre las horas que el club estuvo abierto. */
         private double ocupacion;
         /** Lo que el club facturó por cada hora que tuvo la cancha abierta. */
@@ -90,10 +96,23 @@ public class EstadisticasResponse {
         private String nombre;
         private long unidades;
         private BigDecimal facturado;
-        /** Precio menos costo, con los valores congelados en cada venta. */
+        /**
+         * Precio menos costo, con los valores congelados en cada venta. Solo de los
+         * renglones que tienen costo cargado.
+         */
         private BigDecimal ganancia;
-        /** Ganancia sobre facturación, en porcentaje. */
+        /**
+         * Ganancia sobre la facturación de lo que tiene costo cargado. Null cuando no hay
+         * ningún renglón con costo: el margen no se puede calcular, y eso es distinto de
+         * un margen de cero.
+         */
         private Double margen;
+        /**
+         * Unidades vendidas sin costo cargado. Si es mayor a cero, la ganancia y el margen
+         * están incompletos y la pantalla tiene que decirlo: el costo es opcional porque
+         * el club puede no saber todavía cuánto le sale algo.
+         */
+        private long unidadesSinCosto;
     }
 
     @Getter

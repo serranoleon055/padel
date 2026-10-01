@@ -28,8 +28,15 @@ public class CierreCajaResponse {
     /** Total cobrado en el club en el día (todos los medios). */
     private BigDecimal totalMostrador;
 
-    /** Señas online acreditadas hoy en Mercado Pago (no pasan por el cajón). */
+    /**
+     * Señas de TURNO acreditadas hoy en Mercado Pago (no pasan por el cajón). Las
+     * inscripciones a torneos también entran por Mercado Pago y van aparte: antes se
+     * sumaban acá y el club veía como seña de cancha la plata de un torneo.
+     */
     private BigDecimal seniasOnline;
+
+    /** Inscripciones a torneos acreditadas hoy en Mercado Pago. */
+    private BigDecimal inscripcionesOnline;
 
     private BigDecimal totalDelDia;
 
@@ -40,13 +47,22 @@ public class CierreCajaResponse {
     /** Un movimiento por pago real, no por reserva: un turno de dos horas es una línea. */
     private List<MovimientoCajaResponse> movimientos;
 
-    /** Egresos del día (todos los medios). */
+    /**
+     * Egresos de la jornada (todos los medios). Viaja en null para el empleado: el
+     * detalle de los gastos y la rentabilidad son del dueño.
+     */
     private BigDecimal egresos;
-    /** Parte de los egresos que salió del cajón. */
+    /**
+     * Parte de los egresos que salió del cajón. Este SÍ lo ve el empleado, porque sin él
+     * el efectivo esperado no se puede explicar y un arqueo que no se entiende no se
+     * puede firmar.
+     */
     private BigDecimal egresosEfectivo;
-    /** Ingresos menos egresos: lo que de verdad quedó. */
+    /** Ingresos menos egresos: lo que de verdad quedó. Null para el empleado. */
     private BigDecimal resultado;
+    /** Detalle de los egresos. Vacío para el empleado. */
     private List<GastoResponse> gastos;
+    private List<GastoResponse> gastosAnulados;
 
     /** Ventas de mostrador del día: pelotas, bebidas, alquiler de paletas. */
     private List<VentaResponse> ventas;

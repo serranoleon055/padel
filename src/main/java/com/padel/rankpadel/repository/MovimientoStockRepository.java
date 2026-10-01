@@ -31,6 +31,4 @@ public interface MovimientoStockRepository extends JpaRepository<MovimientoStock
         ORDER BY m.fecha DESC
         """)
     List<MovimientoStock> findCompras(Pageable pageable);
-
-    List<MovimientoStock> findByVentaId(Long ventaId);
 }

@@ -108,6 +108,9 @@ public class InscripcionService {
                 .categoria(categoria)
                 .estado(EstadoSolicitud.PENDIENTE)
                 .telefonoContacto(request.getTelefonoContacto())
+                // El precio que la pareja aceptó hoy. Congelado: si el club cambia la
+                // tarifa del torneo, lo ya inscripto no cambia de valor.
+                .costoAplicado(torneo.getCostoInscripcionJugador())
                 .creadoEn(LocalDateTime.now())
                 .build();
 

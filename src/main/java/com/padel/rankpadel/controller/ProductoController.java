@@ -1,7 +1,6 @@
 package com.padel.rankpadel.controller;
 
 import java.util.List;
-import java.util.Map;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -15,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.padel.rankpadel.dto.request.AjusteStockRequest;
 import com.padel.rankpadel.dto.request.MovimientoStockRequest;
 import com.padel.rankpadel.dto.request.ProductoRequest;
 import com.padel.rankpadel.dto.response.MovimientoStockResponse;
@@ -84,10 +84,8 @@ public class ProductoController {
     /** Corrección tras contar la vitrina: se manda cuántas unidades hay de verdad. */
     @PostMapping("/{id}/ajustes")
     public ResponseEntity<ProductoResponse> ajustar(@PathVariable Long id,
-            @RequestBody Map<String, Object> cuerpo) {
-        int stockReal = Integer.parseInt(String.valueOf(cuerpo.getOrDefault("stockReal", 0)));
-        String notas = cuerpo.get("notas") != null ? String.valueOf(cuerpo.get("notas")) : null;
-        return ResponseEntity.ok(productoService.ajustar(id, stockReal, notas));
+            @Valid @RequestBody AjusteStockRequest request) {
+        return ResponseEntity.ok(productoService.ajustar(id, request.getStockReal(), request.getNotas()));
     }
 
     @PostMapping("/{id}/mermas")

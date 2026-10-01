@@ -6,16 +6,14 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import org.springframework.data.domain.PageRequest;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.padel.rankpadel.dto.request.GastoRequest;
 import com.padel.rankpadel.dto.request.MovimientoStockRequest;
 import com.padel.rankpadel.dto.request.ProductoRequest;
 import com.padel.rankpadel.dto.response.MovimientoStockResponse;
 import com.padel.rankpadel.dto.response.ProductoResponse;
-import com.padel.rankpadel.entity.Gasto;
 import com.padel.rankpadel.entity.MovimientoStock;
 import com.padel.rankpadel.entity.Producto;
 import com.padel.rankpadel.entity.Proveedor;
@@ -23,10 +21,10 @@ import com.padel.rankpadel.enums.CategoriaGasto;
 import com.padel.rankpadel.enums.MotivoMovimientoStock;
 import com.padel.rankpadel.exception.EstadoInvalidoException;
 import com.padel.rankpadel.exception.ResourceNotFoundException;
-import com.padel.rankpadel.repository.GastoRepository;
 import com.padel.rankpadel.repository.MovimientoStockRepository;
 import com.padel.rankpadel.repository.ProductoRepository;
 import com.padel.rankpadel.repository.ProveedorRepository;
+import com.padel.rankpadel.util.UsuarioActual;
 
 import lombok.RequiredArgsConstructor;
 
@@ -45,7 +43,7 @@ public class ProductoService {
     private final ProductoRepository productoRepository;
     private final ProveedorRepository proveedorRepository;
     private final MovimientoStockRepository movimientoStockRepository;
-    private final GastoRepository gastoRepository;
+    private final GastoService gastoService;
 
     /**
      * Dos productos con el mismo nombre confunden la venta (¿cuál de los dos?) y
@@ -142,8 +140,21 @@ public class ProductoService {
                     "Para registrar el pago de la compra hace falta el costo por unidad.");
         }
 
+        // El movimiento se fecha cuando entró la mercadería, no cuando se cargó: una
+        // compra cargada con fecha vieja quedaba en el kardex como entrada de hoy y en la
+        // rentabilidad de otro mes, así que el stock y la plata contaban historias
+        // distintas de la misma compra.
+        LocalDateTime cuando = instanteDeLaCompra(request.getFecha());
+
+        // El egreso primero: si la caja de la jornada está cerrada o la fecha es futura,
+        // la compra no entra. Antes el Gasto se armaba acá a mano y por eso se salteaba
+        // los dos controles que /api/gastos sí aplica.
+        if (request.getMedioPago() != null && request.getCostoUnitario() != null) {
+            registrarGastoDeCompra(producto, request);
+        }
+
         aplicarMovimiento(producto, request.getCantidad(), MotivoMovimientoStock.COMPRA,
-                null, request.getCostoUnitario(), request.getNotas());
+                null, request.getCostoUnitario(), request.getNotas(), cuando);
 
         // El costo del producto se actualiza al de la última compra: es lo que el club
         // tiene en la cabeza cuando mira el margen.
@@ -151,10 +162,17 @@ public class ProductoService {
             producto.setCosto(request.getCostoUnitario());
             productoRepository.save(producto);
         }
-        if (request.getMedioPago() != null && request.getCostoUnitario() != null) {
-            registrarGastoDeCompra(producto, request);
-        }
         return aResponse(producto);
+    }
+
+    /**
+     * Si la compra es de hoy vale el reloj; si se carga con fecha vieja, el movimiento se
+     * asienta al arranque de ese día, que es lo que el kardex tiene que mostrar.
+     */
+    private LocalDateTime instanteDeLaCompra(LocalDate fecha) {
+        return fecha == null || fecha.isEqual(LocalDate.now())
+                ? LocalDateTime.now()
+                : fecha.atStartOfDay();
     }
 
     /**
@@ -216,6 +234,18 @@ public class ProductoService {
     @Transactional
     public void aplicarMovimiento(Producto producto, int cantidad, MotivoMovimientoStock motivo,
             com.padel.rankpadel.entity.Venta venta, BigDecimal costoUnitario, String notas) {
+        aplicarMovimiento(producto, cantidad, motivo, venta, costoUnitario, notas, LocalDateTime.now());
+    }
+
+    /**
+     * @param cuando instante con el que se asienta el movimiento. Lo normal es el reloj;
+     *               una compra cargada con fecha vieja lo asienta en esa fecha, para que
+     *               el kardex y el egreso cuenten la misma historia.
+     */
+    @Transactional
+    public void aplicarMovimiento(Producto producto, int cantidad, MotivoMovimientoStock motivo,
+            com.padel.rankpadel.entity.Venta venta, BigDecimal costoUnitario, String notas,
+            LocalDateTime cuando) {
         if (!producto.isControlaStock()) {
             return;
         }
@@ -226,10 +256,10 @@ public class ProductoService {
                 .producto(producto)
                 .cantidad(cantidad)
                 .motivo(motivo)
-                .fecha(LocalDateTime.now())
+                .fecha(cuando)
                 .venta(venta)
                 .costoUnitario(costoUnitario)
-                .registradoPor(usuarioActual())
+                .registradoPor(UsuarioActual.nombre())
                 .notas(notas)
                 .build());
     }
@@ -240,20 +270,23 @@ public class ProductoService {
                 .orElseThrow(() -> new ResourceNotFoundException("Producto", id));
     }
 
+    /**
+     * El egreso de una compra de mercadería. Pasa por {@code GastoService} y no se arma
+     * acá: así hereda los controles de fecha no futura y de caja cerrada, que es lo que
+     * se salteaba cuando esta clase insertaba el {@code Gasto} por su cuenta y permitía
+     * meter plata en una jornada con el arqueo ya firmado.
+     */
     private void registrarGastoDeCompra(Producto producto, MovimientoStockRequest request) {
         BigDecimal total = request.getCostoUnitario().multiply(BigDecimal.valueOf(request.getCantidad()));
-        gastoRepository.save(Gasto.builder()
-                .fecha(request.getFecha() != null ? request.getFecha() : LocalDate.now())
-                .categoria(CategoriaGasto.INSUMOS)
-                .descripcion("Compra de " + request.getCantidad() + " x " + producto.getNombre())
-                .monto(total)
-                .medio(request.getMedioPago())
-                .proveedor(producto.getProveedor() != null ? producto.getProveedor().getNombre() : null)
-                .registradoPor(usuarioActual())
-                .notas(request.getNotas())
-                .creadoEn(LocalDateTime.now())
-                .producto(producto)
-                .build());
+        GastoRequest pedido = new GastoRequest();
+        pedido.setFecha(request.getFecha() != null ? request.getFecha() : LocalDate.now());
+        pedido.setCategoria(CategoriaGasto.INSUMOS);
+        pedido.setDescripcion("Compra de " + request.getCantidad() + " x " + producto.getNombre());
+        pedido.setMonto(total);
+        pedido.setMedio(request.getMedioPago());
+        pedido.setProveedor(producto.getProveedor() != null ? producto.getProveedor().getNombre() : null);
+        pedido.setNotas(request.getNotas());
+        gastoService.registrarEntidad(pedido, producto, true);
     }
 
     private void exigirControlDeStock(Producto producto, String accion) {
@@ -269,11 +302,6 @@ public class ProductoService {
         }
         return proveedorRepository.findById(proveedorId)
                 .orElseThrow(() -> new ResourceNotFoundException("Proveedor", proveedorId));
-    }
-
-    private String usuarioActual() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return auth != null ? auth.getName() : null;
     }
 
     ProductoResponse aResponse(Producto producto) {

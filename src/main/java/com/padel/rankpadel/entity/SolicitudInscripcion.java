@@ -1,5 +1,6 @@
 package com.padel.rankpadel.entity;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
@@ -47,6 +48,15 @@ public class SolicitudInscripcion {
 
     @Enumerated(EnumType.STRING)
     private EstadoSolicitud estado;
+
+    /**
+     * Costo de inscripción POR JUGADOR, congelado al momento de inscribirse. Es el precio
+     * que la pareja aceptó ese día, y no se mueve si después el club cambia la tarifa del
+     * torneo: con el costo vivo, cambiar el precio reescribía la facturación de todos los
+     * meses pasados. Mismo criterio que {@code Reserva.precioAplicado} (V41) y
+     * {@code VentaItem.precioUnitario} (V48).
+     */
+    private BigDecimal costoAplicado;
 
     private String telefonoContacto;
     private LocalDateTime creadoEn;
