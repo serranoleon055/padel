@@ -295,6 +295,8 @@ public class VentaService {
                 .map(item -> VentaResponse.Item.builder()
                         .productoId(item.getProducto() != null ? item.getProducto().getId() : null)
                         .productoNombre(item.getProducto() != null ? item.getProducto().getNombre() : null)
+                        .presentacionNombre(item.getPresentacion() != null ? item.getPresentacion().getNombre() : null)
+                        .factor(item.getFactor())
                         .cantidad(item.getCantidad())
                         .precioUnitario(item.getPrecioUnitario())
                         .subtotal(item.subtotal())
@@ -314,7 +316,12 @@ public class VentaService {
                 .notas(venta.getNotas())
                 .items(items)
                 .detalle(items.stream()
-                        .map(item -> item.getCantidad() + " x " + item.getProductoNombre())
+                        // Con el pack adelante: dos renglones del mismo producto que
+                        // dicen lo mismo no se pueden distinguir en la caja.
+                        .map(item -> item.getCantidad() + " x " + item.getProductoNombre()
+                                + (item.getPresentacionNombre() != null
+                                        ? " (" + item.getPresentacionNombre() + ")"
+                                        : ""))
                         .reduce((a, b) -> a + ", " + b)
                         .orElse(""))
                 .anuladoEn(venta.getAnuladoEn())

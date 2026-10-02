@@ -107,6 +107,10 @@ public class ProductoService {
                 .categoria(request.getCategoria())
                 .precioVenta(request.getPrecioVenta())
                 .costo(request.getCosto())
+                // Con un solo costo conocido, el promedio ES ese costo. Sin esto un
+                // producto recién creado mostraba "costo promedio: —" hasta la primera
+                // compra, que para el club se lee como un dato que falta.
+                .costoPromedio(request.getCosto())
                 .controlaStock(request.isControlaStock())
                 .stock(0)
                 .stockMinimo(request.getStockMinimo() != null ? request.getStockMinimo() : 0)
@@ -135,6 +139,13 @@ public class ProductoService {
         producto.setCategoria(request.getCategoria());
         producto.setPrecioVenta(request.getPrecioVenta());
         producto.setCosto(request.getCosto());
+        // Si todavía no hay promedio (el producto nunca se compró por el sistema), el
+        // costo que carga el club a mano ES el promedio. Si ya hay uno calculado con
+        // compras reales, corregir el último costo NO lo pisa: el promedio sale de lo que
+        // efectivamente se pagó.
+        if (producto.getCostoPromedio() == null) {
+            producto.setCostoPromedio(request.getCosto());
+        }
         producto.setControlaStock(request.isControlaStock());
         producto.setStockMinimo(request.getStockMinimo() != null ? request.getStockMinimo() : 0);
         producto.setProveedor(proveedor(request.getProveedorId()));

@@ -44,6 +44,10 @@ public class VentaResponse {
     public static class Item {
         private Long productoId;
         private String productoNombre;
+        /** Cómo se vendió: "Tubo de 3". Null = la unidad suelta. */
+        private String presentacionNombre;
+        /** Unidades base que sacó cada una. */
+        private int factor;
         private int cantidad;
         private BigDecimal precioUnitario;
         private BigDecimal subtotal;
