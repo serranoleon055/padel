@@ -129,6 +129,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/productos/**").hasRole("DUENIO")
                         .requestMatchers(HttpMethod.PUT, "/api/productos/**").hasRole("DUENIO")
                         .requestMatchers(HttpMethod.DELETE, "/api/productos/**").hasRole("DUENIO")
+                        // Reactivar una presentación es volver a ponerla en venta: la
+                        // misma decisión que el precio. Sin esto caía en el ADMIN
+                        // genérico del final y la tocaba el mostrador.
+                        .requestMatchers(HttpMethod.PATCH, "/api/productos/**").hasRole("DUENIO")
                         .requestMatchers("/api/proveedores/**").hasRole("DUENIO")
                         .requestMatchers(HttpMethod.DELETE, "/api/torneos/**").hasRole("DUENIO")
                         .requestMatchers(HttpMethod.PUT, "/api/configuracion-sede").hasRole("DUENIO")

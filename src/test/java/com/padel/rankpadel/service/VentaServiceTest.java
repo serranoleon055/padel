@@ -26,6 +26,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.padel.rankpadel.dto.request.VentaRequest;
 import com.padel.rankpadel.dto.response.VentaResponse;
+import com.padel.rankpadel.entity.PresentacionProducto;
 import com.padel.rankpadel.entity.Producto;
 import com.padel.rankpadel.entity.Reserva;
 import com.padel.rankpadel.entity.Venta;
@@ -38,6 +39,7 @@ import com.padel.rankpadel.exception.EstadoInvalidoException;
 import com.padel.rankpadel.repository.ClienteRepository;
 import com.padel.rankpadel.repository.CobroRepository;
 import com.padel.rankpadel.repository.ReservaRepository;
+import com.padel.rankpadel.repository.PresentacionProductoRepository;
 import com.padel.rankpadel.repository.VentaRepository;
 
 @ExtendWith(MockitoExtension.class)
@@ -58,6 +60,8 @@ class VentaServiceTest {
     private CajaCerradaGuard cajaCerradaGuard;
     @Mock
     private DisponibilidadCanchaService disponibilidadCanchaService;
+    @Mock
+    private PresentacionProductoRepository presentacionProductoRepository;
 
     @InjectMocks
     private VentaService ventaService;
@@ -102,6 +106,181 @@ class VentaServiceTest {
         request.setMedio(MedioPago.EFECTIVO);
         request.setItems(List.of(uno, dos));
         return request;
+    }
+
+    @Nested
+    @DisplayName("Presentaciones: la pelota suelta y el tubo")
+    class Presentaciones {
+
+        private PresentacionProducto tubo(Producto producto, int unidades, String precio) {
+            return PresentacionProducto.builder()
+                    .id(9L).producto(producto).nombre("Tubo de " + unidades)
+                    .unidades(unidades).precioVenta(new BigDecimal(precio)).activo(true)
+                    .build();
+        }
+
+        private VentaRequest pedidoConPresentacion(Long productoId, Long presentacionId, int cantidad) {
+            VentaRequest.Item item = new VentaRequest.Item();
+            item.setProductoId(productoId);
+            item.setPresentacionId(presentacionId);
+            item.setCantidad(cantidad);
+            VentaRequest request = new VentaRequest();
+            request.setMedio(MedioPago.EFECTIVO);
+            request.setItems(List.of(item));
+            return request;
+        }
+
+        @Test
+        @DisplayName("Vender un tubo cobra el precio del tubo y descuenta tres pelotas")
+        void tubo_descuentaLasUnidadesBase() {
+            // El stock se lleva en pelotas y el tubo saca tres. El precio es propio: el
+            // pack sale más barato que tres sueltas, que es la razón de venderlo así.
+            Producto pelotas = producto(1L, "Pelotas Head", "6000", "4000", 12);
+            when(productoService.buscar(1L)).thenReturn(pelotas);
+            when(presentacionProductoRepository.findById(9L))
+                    .thenReturn(Optional.of(tubo(pelotas, 3, "16000")));
+
+            VentaResponse respuesta = ventaService.registrar(pedidoConPresentacion(1L, 9L, 1));
+
+            assertThat(respuesta.getTotal()).isEqualByComparingTo("16000");
+            verify(productoService).aplicarMovimiento(eq(pelotas), eq(-3),
+                    eq(MotivoMovimientoStock.VENTA), any(Venta.class), isNull(), isNull());
+        }
+
+        @Test
+        @DisplayName("El costo del tubo es el de tres pelotas, no el de una")
+        void tubo_congelaElCostoPorPresentacion() {
+            // Sin multiplicar por el factor, el margen de un tubo se mediría contra el
+            // costo de una sola pelota y el kiosco parecería una mina de oro.
+            Producto pelotas = producto(1L, "Pelotas Head", "6000", "4000", 12);
+            when(productoService.buscar(1L)).thenReturn(pelotas);
+            when(presentacionProductoRepository.findById(9L))
+                    .thenReturn(Optional.of(tubo(pelotas, 3, "16000")));
+
+            ventaService.registrar(pedidoConPresentacion(1L, 9L, 1));
+
+            ArgumentCaptor<Venta> guardada = ArgumentCaptor.forClass(Venta.class);
+            verify(ventaRepository).save(guardada.capture());
+            VentaItem item = guardada.getValue().getItems().get(0);
+            assertThat(item.getCostoUnitario()).isEqualByComparingTo("12000");
+            assertThat(item.getFactor()).isEqualTo(3);
+            assertThat(item.unidadesBase()).isEqualTo(3);
+        }
+
+        @Test
+        @DisplayName("Un tubo y dos sueltas del mismo producto son cinco pelotas")
+        void mezclar_validaElStockEnUnidadesBase() {
+            // Es el bug de V52 otra vez, con una vuelta de rosca: si cada renglón se
+            // valida contra el stock por separado, un tubo (3) y dos sueltas (2) pasan
+            // con stock 4 y se venden cinco.
+            Producto pelotas = producto(1L, "Pelotas Head", "6000", "4000", 4);
+            when(productoService.buscar(1L)).thenReturn(pelotas);
+            when(presentacionProductoRepository.findById(9L))
+                    .thenReturn(Optional.of(tubo(pelotas, 3, "16000")));
+
+            VentaRequest.Item conTubo = new VentaRequest.Item();
+            conTubo.setProductoId(1L);
+            conTubo.setPresentacionId(9L);
+            conTubo.setCantidad(1);
+            VentaRequest.Item sueltas = new VentaRequest.Item();
+            sueltas.setProductoId(1L);
+            sueltas.setCantidad(2);
+            VentaRequest request = new VentaRequest();
+            request.setMedio(MedioPago.EFECTIVO);
+            request.setItems(List.of(conTubo, sueltas));
+
+            assertThatThrownBy(() -> ventaService.registrar(request))
+                    .isInstanceOf(EstadoInvalidoException.class)
+                    .hasMessageContaining("No hay stock suficiente");
+
+            verify(ventaRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Un tubo y dos sueltas entran si hay cinco, y salen como dos renglones")
+        void mezclar_conStock_dosRenglones() {
+            Producto pelotas = producto(1L, "Pelotas Head", "6000", "4000", 5);
+            when(productoService.buscar(1L)).thenReturn(pelotas);
+            when(presentacionProductoRepository.findById(9L))
+                    .thenReturn(Optional.of(tubo(pelotas, 3, "16000")));
+
+            VentaRequest.Item conTubo = new VentaRequest.Item();
+            conTubo.setProductoId(1L);
+            conTubo.setPresentacionId(9L);
+            conTubo.setCantidad(1);
+            VentaRequest.Item sueltas = new VentaRequest.Item();
+            sueltas.setProductoId(1L);
+            sueltas.setCantidad(2);
+            VentaRequest request = new VentaRequest();
+            request.setMedio(MedioPago.EFECTIVO);
+            request.setItems(List.of(conTubo, sueltas));
+
+            VentaResponse respuesta = ventaService.registrar(request);
+
+            // 16.000 del tubo + 2 x 6.000 de las sueltas.
+            assertThat(respuesta.getTotal()).isEqualByComparingTo("28000");
+            verify(productoService).aplicarMovimiento(eq(pelotas), eq(-3), any(), any(), any(), any());
+            verify(productoService).aplicarMovimiento(eq(pelotas), eq(-2), any(), any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("Una presentación de otro producto se rechaza")
+        void presentacionAjena_rechaza() {
+            // Con el id de otro producto se cobraría el precio equivocado y se
+            // descontaría del stock equivocado.
+            Producto pelotas = producto(1L, "Pelotas Head", "6000", "4000", 12);
+            Producto otro = producto(2L, "Gatorade", "3000", "2000", 10);
+            when(productoService.buscar(1L)).thenReturn(pelotas);
+            when(presentacionProductoRepository.findById(9L))
+                    .thenReturn(Optional.of(tubo(otro, 3, "16000")));
+
+            assertThatThrownBy(() -> ventaService.registrar(pedidoConPresentacion(1L, 9L, 1)))
+                    .isInstanceOf(EstadoInvalidoException.class)
+                    .hasMessageContaining("no es de");
+        }
+
+        @Test
+        @DisplayName("Una presentación dada de baja no se puede vender")
+        void presentacionDeBaja_rechaza() {
+            Producto pelotas = producto(1L, "Pelotas Head", "6000", "4000", 12);
+            PresentacionProducto deBaja = tubo(pelotas, 3, "16000");
+            deBaja.setActivo(false);
+            when(productoService.buscar(1L)).thenReturn(pelotas);
+            when(presentacionProductoRepository.findById(9L)).thenReturn(Optional.of(deBaja));
+
+            assertThatThrownBy(() -> ventaService.registrar(pedidoConPresentacion(1L, 9L, 1)))
+                    .isInstanceOf(EstadoInvalidoException.class)
+                    .hasMessageContaining("dada de baja");
+        }
+
+        @Test
+        @DisplayName("Sin presentación se vende como siempre: de a una y por su precio")
+        void sinPresentacion_seComportaIgualQueAntes() {
+            Producto pelotas = producto(1L, "Pelotas Head", "6000", "4000", 12);
+            when(productoService.buscar(1L)).thenReturn(pelotas);
+
+            VentaResponse respuesta = ventaService.registrar(pedido(MedioPago.EFECTIVO, 1L, 2));
+
+            assertThat(respuesta.getTotal()).isEqualByComparingTo("12000");
+            verify(productoService).aplicarMovimiento(eq(pelotas), eq(-2), any(), any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("El costo congelado sale del promedio ponderado, no del último")
+        void congelaElCostoPromedio() {
+            // La última compra salió cara, pero lo que hay en la heladera costó menos en
+            // promedio: el margen de esta venta se mide contra lo que costó de verdad.
+            Producto pelotas = producto(1L, "Pelotas Head", "6000", "5000", 12);
+            pelotas.setCostoPromedio(new BigDecimal("4000"));
+            when(productoService.buscar(1L)).thenReturn(pelotas);
+
+            ventaService.registrar(pedido(MedioPago.EFECTIVO, 1L, 1));
+
+            ArgumentCaptor<Venta> guardada = ArgumentCaptor.forClass(Venta.class);
+            verify(ventaRepository).save(guardada.capture());
+            assertThat(guardada.getValue().getItems().get(0).getCostoUnitario())
+                    .isEqualByComparingTo("4000");
+        }
     }
 
     @Nested

@@ -45,6 +45,13 @@ public class VentaRequest {
         @NotNull(message = "Elegí el producto")
         private Long productoId;
 
+        /**
+         * Cómo se vende: suelta o por tubo. Null es la unidad base, que es cómo se vendió
+         * todo hasta V62 y sigue siendo lo normal en los productos sin presentaciones.
+         */
+        private Long presentacionId;
+
+        /** Cuántas de ESA presentación: 2 tubos son 2, no 6. */
         @Min(value = 1, message = "La cantidad tiene que ser al menos 1")
         private int cantidad;
     }

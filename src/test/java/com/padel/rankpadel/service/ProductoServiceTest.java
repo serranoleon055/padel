@@ -72,6 +72,79 @@ class ProductoServiceTest {
     }
 
     @Nested
+    @DisplayName("Costo promedio ponderado")
+    class CostoPromedio {
+
+        @Test
+        @DisplayName("Pondera por las unidades que había y las que entran")
+        void comprar_ponderaElPromedio() {
+            // Había 10 a $100 y entran 10 a $200: el promedio es $150, no $200. Con el
+            // último costo, esta compra habría movido de golpe el valor de las diez que
+            // ya estaban en la heladera.
+            Producto producto = pelotas(10);
+            producto.setCosto(new BigDecimal("100"));
+            producto.setCostoPromedio(new BigDecimal("100"));
+            when(productoRepository.findById(1L)).thenReturn(Optional.of(producto));
+
+            productoService.comprar(1L, compra(10, "200", null));
+
+            assertThat(producto.getCostoPromedio()).isEqualByComparingTo("150");
+            // Y el último costo sigue siendo el de esta compra, que es el número que el
+            // club tiene en la cabeza cuando mira el precio.
+            assertThat(producto.getCosto()).isEqualByComparingTo("200");
+        }
+
+        @Test
+        @DisplayName("Sin stock previo, el promedio es el costo de esta compra")
+        void comprar_sinStockPrevio_tomaElCosto() {
+            Producto producto = pelotas(0);
+            producto.setCostoPromedio(new BigDecimal("100"));
+            when(productoRepository.findById(1L)).thenReturn(Optional.of(producto));
+
+            productoService.comprar(1L, compra(5, "300", null));
+
+            assertThat(producto.getCostoPromedio()).isEqualByComparingTo("300");
+        }
+
+        @Test
+        @DisplayName("La primera compra de un producto sin costo arranca el promedio")
+        void comprar_sinPromedioPrevio_arranca() {
+            Producto producto = pelotas(4);
+            producto.setCosto(null);
+            producto.setCostoPromedio(null);
+            when(productoRepository.findById(1L)).thenReturn(Optional.of(producto));
+
+            productoService.comprar(1L, compra(6, "250", null));
+
+            assertThat(producto.getCostoPromedio()).isEqualByComparingTo("250");
+        }
+
+        @Test
+        @DisplayName("El stock se valúa y el margen se mide al promedio, no al último costo")
+        void margen_usaElPromedio() {
+            Producto producto = pelotas(10);
+            producto.setPrecioVenta(new BigDecimal("500"));
+            producto.setCosto(new BigDecimal("400"));
+            producto.setCostoPromedio(new BigDecimal("300"));
+
+            assertThat(producto.costoDeValuacion()).isEqualByComparingTo("300");
+            assertThat(producto.margenUnitario()).isEqualByComparingTo("200");
+        }
+
+        @Test
+        @DisplayName("Sin promedio todavía, se cae al último costo")
+        void margen_sinPromedio_caeAlUltimoCosto() {
+            Producto producto = pelotas(10);
+            producto.setPrecioVenta(new BigDecimal("500"));
+            producto.setCosto(new BigDecimal("400"));
+            producto.setCostoPromedio(null);
+
+            assertThat(producto.costoDeValuacion()).isEqualByComparingTo("400");
+            assertThat(producto.margenUnitario()).isEqualByComparingTo("100");
+        }
+    }
+
+    @Nested
     @DisplayName("Compra de mercadería")
     class Compras {
 

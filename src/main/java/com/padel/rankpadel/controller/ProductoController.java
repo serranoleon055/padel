@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -16,11 +17,15 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.padel.rankpadel.dto.request.AjusteStockRequest;
 import com.padel.rankpadel.dto.request.MovimientoStockRequest;
+import com.padel.rankpadel.dto.request.PresentacionRequest;
 import com.padel.rankpadel.dto.request.ProductoRequest;
 import com.padel.rankpadel.dto.response.MovimientoStockResponse;
+import com.padel.rankpadel.dto.response.PresentacionResponse;
 import com.padel.rankpadel.dto.response.ProductoResponse;
+import com.padel.rankpadel.service.PresentacionProductoService;
 import com.padel.rankpadel.service.ProductoService;
 
+import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +37,7 @@ import lombok.RequiredArgsConstructor;
 public class ProductoController {
 
     private final ProductoService productoService;
+    private final PresentacionProductoService presentacionProductoService;
 
     @GetMapping
     public ResponseEntity<List<ProductoResponse>> listar(
@@ -86,6 +92,46 @@ public class ProductoController {
     public ResponseEntity<ProductoResponse> ajustar(@PathVariable Long id,
             @Valid @RequestBody AjusteStockRequest request) {
         return ResponseEntity.ok(productoService.ajustar(id, request.getStockReal(), request.getNotas()));
+    }
+
+    /**
+     * Las formas de vender el producto: la unidad suelta y los packs. El mostrador las
+     * lee para elegir cómo cobrar; cargarlas es decisión del dueño, igual que el precio.
+     */
+    @Operation(summary = "Presentaciones de un producto")
+    @GetMapping("/{id}/presentaciones")
+    public ResponseEntity<List<PresentacionResponse>> listarPresentaciones(@PathVariable Long id,
+            @RequestParam(defaultValue = "false") boolean incluirBajas) {
+        return ResponseEntity.ok(presentacionProductoService.listar(id, incluirBajas));
+    }
+
+    @Operation(summary = "Crear presentación", description = "Requiere JWT de dueño.")
+    @PostMapping("/{id}/presentaciones")
+    public ResponseEntity<PresentacionResponse> crearPresentacion(@PathVariable Long id,
+            @Valid @RequestBody PresentacionRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(presentacionProductoService.crear(id, request));
+    }
+
+    @Operation(summary = "Editar presentación", description = "Requiere JWT de dueño.")
+    @PutMapping("/presentaciones/{presentacionId}")
+    public ResponseEntity<PresentacionResponse> actualizarPresentacion(@PathVariable Long presentacionId,
+            @Valid @RequestBody PresentacionRequest request) {
+        return ResponseEntity.ok(presentacionProductoService.actualizar(presentacionId, request));
+    }
+
+    @Operation(summary = "Dar de baja una presentación",
+            description = "Requiere JWT de dueño. Baja lógica: las ventas viejas la siguen mostrando.")
+    @DeleteMapping("/presentaciones/{presentacionId}")
+    public ResponseEntity<Void> darDeBajaPresentacion(@PathVariable Long presentacionId) {
+        presentacionProductoService.darDeBaja(presentacionId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "Reactivar una presentación", description = "Requiere JWT de dueño.")
+    @PatchMapping("/presentaciones/{presentacionId}/reactivar")
+    public ResponseEntity<PresentacionResponse> reactivarPresentacion(@PathVariable Long presentacionId) {
+        return ResponseEntity.ok(presentacionProductoService.reactivar(presentacionId));
     }
 
     @PostMapping("/{id}/mermas")

@@ -54,8 +54,21 @@ public class Producto {
 
     private BigDecimal precioVenta;
 
-    /** Lo que le cuesta al club. Sin esto no se puede calcular el margen. */
+    /**
+     * Lo que salió la ÚLTIMA compra. Es el número que el club tiene en la cabeza cuando
+     * mira el precio, así que se muestra; pero para valuar el depósito y medir el margen
+     * se usa {@link #costoPromedio}.
+     */
     private BigDecimal costo;
+
+    /**
+     * Costo promedio ponderado: lo que salió en promedio cada unidad de las que hay.
+     *
+     * <p>Con el último costo, una compra chica a precio raro movía de golpe el capital en
+     * stock y el margen de todo lo que ya estaba en la heladera. Se recalcula en cada
+     * compra ponderando por las unidades que había y las que entran.
+     */
+    private BigDecimal costoPromedio;
 
     /**
      * Un alquiler de paleta o un café no tienen unidades que se acaben. Con el control
@@ -85,11 +98,21 @@ public class Producto {
         return controlaStock && stockMinimo > 0 && stock <= stockMinimo;
     }
 
+    /**
+     * El costo con el que se valúa el stock y se mide el margen: el promedio ponderado, y
+     * el último costo solo mientras no haya promedio (productos que nunca se compraron
+     * por el sistema).
+     */
+    public BigDecimal costoDeValuacion() {
+        return costoPromedio != null ? costoPromedio : costo;
+    }
+
     /** Ganancia por unidad, o null si todavía no se cargó el costo. */
     public BigDecimal margenUnitario() {
-        if (costo == null || precioVenta == null) {
+        BigDecimal base = costoDeValuacion();
+        if (base == null || precioVenta == null) {
             return null;
         }
-        return precioVenta.subtract(costo);
+        return precioVenta.subtract(base);
     }
 }

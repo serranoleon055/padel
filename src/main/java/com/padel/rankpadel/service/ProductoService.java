@@ -1,9 +1,13 @@
 package com.padel.rankpadel.service;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -13,6 +17,7 @@ import com.padel.rankpadel.dto.request.GastoRequest;
 import com.padel.rankpadel.dto.request.MovimientoStockRequest;
 import com.padel.rankpadel.dto.request.ProductoRequest;
 import com.padel.rankpadel.dto.response.MovimientoStockResponse;
+import com.padel.rankpadel.dto.response.PresentacionResponse;
 import com.padel.rankpadel.dto.response.ProductoResponse;
 import com.padel.rankpadel.entity.MovimientoStock;
 import com.padel.rankpadel.entity.Producto;
@@ -22,6 +27,7 @@ import com.padel.rankpadel.enums.MotivoMovimientoStock;
 import com.padel.rankpadel.exception.EstadoInvalidoException;
 import com.padel.rankpadel.exception.ResourceNotFoundException;
 import com.padel.rankpadel.repository.MovimientoStockRepository;
+import com.padel.rankpadel.repository.PresentacionProductoRepository;
 import com.padel.rankpadel.repository.ProductoRepository;
 import com.padel.rankpadel.repository.ProveedorRepository;
 import com.padel.rankpadel.util.UsuarioActual;
@@ -44,6 +50,8 @@ public class ProductoService {
     private final ProveedorRepository proveedorRepository;
     private final MovimientoStockRepository movimientoStockRepository;
     private final GastoService gastoService;
+    private final PresentacionProductoRepository presentacionProductoRepository;
+    private final PresentacionProductoService presentacionProductoService;
 
     /**
      * Dos productos con el mismo nombre confunden la venta (¿cuál de los dos?) y
@@ -62,7 +70,27 @@ public class ProductoService {
     @Transactional(readOnly = true)
     public List<ProductoResponse> listar(String busqueda, boolean soloActivos) {
         String texto = busqueda != null && !busqueda.isBlank() ? busqueda.trim() : null;
-        return productoRepository.buscar(texto, soloActivos).stream().map(this::aResponse).toList();
+        List<Producto> productos = productoRepository.buscar(texto, soloActivos);
+        if (productos.isEmpty()) {
+            return List.of();
+        }
+        // Las presentaciones de todos los productos en una consulta. Pedirlas producto por
+        // producto sería un N+1 en la pantalla que el mostrador abre en cada venta.
+        Map<Long, List<PresentacionResponse>> porProducto = presentacionProductoRepository
+                .findByProductoIdInAndActivoTrueOrderByOrdenAscIdAsc(
+                        productos.stream().map(Producto::getId).toList())
+                .stream()
+                .collect(Collectors.groupingBy(presentacion -> presentacion.getProducto().getId(),
+                        LinkedHashMap::new,
+                        Collectors.mapping(presentacionProductoService::aResponse, Collectors.toList())));
+
+        return productos.stream()
+                .map(producto -> {
+                    ProductoResponse respuesta = aResponse(producto);
+                    respuesta.setPresentaciones(porProducto.getOrDefault(producto.getId(), List.of()));
+                    return respuesta;
+                })
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -153,16 +181,44 @@ public class ProductoService {
             registrarGastoDeCompra(producto, request);
         }
 
-        aplicarMovimiento(producto, request.getCantidad(), MotivoMovimientoStock.COMPRA,
-                null, request.getCostoUnitario(), request.getNotas(), cuando);
-
-        // El costo del producto se actualiza al de la última compra: es lo que el club
-        // tiene en la cabeza cuando mira el margen.
+        // El promedio se recalcula ANTES de sumar las unidades, porque necesita saber
+        // cuántas había.
         if (request.getCostoUnitario() != null) {
+            producto.setCostoPromedio(promedioPonderado(producto, request.getCantidad(),
+                    request.getCostoUnitario()));
+            // Y el costo del producto pasa a ser el de la última compra: es lo que el club
+            // tiene en la cabeza cuando mira el precio.
             producto.setCosto(request.getCostoUnitario());
             productoRepository.save(producto);
         }
+
+        aplicarMovimiento(producto, request.getCantidad(), MotivoMovimientoStock.COMPRA,
+                null, request.getCostoUnitario(), request.getNotas(), cuando);
+
         return aResponse(producto);
+    }
+
+    /**
+     * Lo que sale en promedio cada unidad después de esta compra, ponderando por las que
+     * había y las que entran.
+     *
+     * <p>Con el último costo, una compra chica a precio raro movía de golpe el capital en
+     * stock y el margen de todo lo que ya estaba en la heladera.
+     *
+     * <p>Si no había stock (o quedó en negativo por un ajuste) o si nunca hubo promedio,
+     * el promedio ES el costo de esta compra: no hay nada viejo que ponderar.
+     */
+    private BigDecimal promedioPonderado(Producto producto, int cantidadQueEntra,
+            BigDecimal costoDeLaCompra) {
+        int stockPrevio = producto.getStock();
+        BigDecimal promedioPrevio = producto.getCostoPromedio();
+        if (stockPrevio <= 0 || promedioPrevio == null || cantidadQueEntra <= 0) {
+            return costoDeLaCompra;
+        }
+        BigDecimal valorPrevio = promedioPrevio.multiply(BigDecimal.valueOf(stockPrevio));
+        BigDecimal valorQueEntra = costoDeLaCompra.multiply(BigDecimal.valueOf(cantidadQueEntra));
+        return valorPrevio.add(valorQueEntra)
+                .divide(BigDecimal.valueOf(stockPrevio + (long) cantidadQueEntra), 2, RoundingMode.HALF_UP);
     }
 
     /**
@@ -312,6 +368,7 @@ public class ProductoService {
                 .categoria(producto.getCategoria() != null ? producto.getCategoria().name() : null)
                 .precioVenta(producto.getPrecioVenta())
                 .costo(producto.getCosto())
+                .costoPromedio(producto.getCostoPromedio())
                 .margenUnitario(producto.margenUnitario())
                 .controlaStock(producto.isControlaStock())
                 .stock(producto.getStock())

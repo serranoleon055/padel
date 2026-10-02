@@ -48,8 +48,9 @@ public interface ProductoRepository extends JpaRepository<Producto, Long> {
      * catálogo entero para multiplicar y sumar en Java.
      */
     @Query("""
-        SELECT COALESCE(SUM(p.costo * p.stock), 0) FROM Producto p
-        WHERE p.activo = true AND p.controlaStock = true AND p.costo IS NOT NULL
+        SELECT COALESCE(SUM(COALESCE(p.costoPromedio, p.costo) * p.stock), 0) FROM Producto p
+        WHERE p.activo = true AND p.controlaStock = true
+          AND COALESCE(p.costoPromedio, p.costo) IS NOT NULL
         """)
     java.math.BigDecimal capitalEnStock();
 

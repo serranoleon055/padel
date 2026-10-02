@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.padel.rankpadel.dto.request.VentaRequest;
 import com.padel.rankpadel.dto.response.VentaResponse;
 import com.padel.rankpadel.entity.Cliente;
+import com.padel.rankpadel.entity.PresentacionProducto;
 import com.padel.rankpadel.entity.Producto;
 import com.padel.rankpadel.entity.Reserva;
 import com.padel.rankpadel.entity.Venta;
@@ -26,6 +27,7 @@ import com.padel.rankpadel.exception.EstadoInvalidoException;
 import com.padel.rankpadel.exception.ResourceNotFoundException;
 import com.padel.rankpadel.repository.ClienteRepository;
 import com.padel.rankpadel.repository.CobroRepository;
+import com.padel.rankpadel.repository.PresentacionProductoRepository;
 import com.padel.rankpadel.repository.ReservaRepository;
 import com.padel.rankpadel.repository.VentaRepository;
 
@@ -49,6 +51,7 @@ public class VentaService {
     private final CobroRepository cobroRepository;
     private final ProductoService productoService;
     private final CajaCerradaGuard cajaCerradaGuard;
+    private final PresentacionProductoRepository presentacionProductoRepository;
     private final DisponibilidadCanchaService disponibilidadCanchaService;
 
     @Transactional
@@ -87,26 +90,57 @@ public class VentaService {
                 .total(BigDecimal.ZERO)
                 .build();
 
-        // El mismo producto puede venir en varios renglones, porque el mostrador lo agrega
-        // de a uno. Se suman ANTES de validar: si no, cada renglón se comparaba contra el
-        // stock entero y entre todos se vendía más de lo que había en la heladera.
-        Map<Long, Integer> pedidas = new LinkedHashMap<>();
+        // El mismo producto y la misma presentación pueden venir en varios renglones,
+        // porque el mostrador los agrega de a uno. Se suman ANTES de validar: si no, cada
+        // renglón se comparaba contra el stock entero y entre todos se vendía más de lo
+        // que había en la heladera.
+        //
+        // La clave incluye la presentación, porque "1 tubo" y "2 sueltas" son dos
+        // renglones distintos del mismo producto. Pero el STOCK se valida sumando las
+        // unidades base de todos ellos: un tubo y dos sueltas son cinco pelotas, y
+        // validar cada renglón contra el stock por separado dejaría vender de más otra
+        // vez, que es justo el bug que arregló V52.
+        Map<ClaveRenglon, Integer> pedidas = new LinkedHashMap<>();
         for (VentaRequest.Item pedido : request.getItems()) {
-            pedidas.merge(pedido.getProductoId(), pedido.getCantidad(), Integer::sum);
+            pedidas.merge(new ClaveRenglon(pedido.getProductoId(), pedido.getPresentacionId()),
+                    pedido.getCantidad(), Integer::sum);
+        }
+
+        Map<Long, Producto> productos = new LinkedHashMap<>();
+        Map<Long, Integer> unidadesBasePorProducto = new LinkedHashMap<>();
+        Map<ClaveRenglon, PresentacionProducto> presentaciones = new LinkedHashMap<>();
+        for (Map.Entry<ClaveRenglon, Integer> pedido : pedidas.entrySet()) {
+            Producto producto = productos.computeIfAbsent(pedido.getKey().productoId(),
+                    productoService::buscar);
+            PresentacionProducto presentacion = presentacionDe(producto, pedido.getKey().presentacionId());
+            presentaciones.put(pedido.getKey(), presentacion);
+            int factor = presentacion != null ? presentacion.getUnidades() : 1;
+            unidadesBasePorProducto.merge(producto.getId(), pedido.getValue() * factor, Integer::sum);
+        }
+        for (Map.Entry<Long, Integer> porProducto : unidadesBasePorProducto.entrySet()) {
+            validarDisponible(productos.get(porProducto.getKey()), porProducto.getValue());
         }
 
         BigDecimal total = BigDecimal.ZERO;
-        for (Map.Entry<Long, Integer> pedido : pedidas.entrySet()) {
-            Producto producto = productoService.buscar(pedido.getKey());
-            validarDisponible(producto, pedido.getValue());
+        for (Map.Entry<ClaveRenglon, Integer> pedido : pedidas.entrySet()) {
+            Producto producto = productos.get(pedido.getKey().productoId());
+            PresentacionProducto presentacion = presentaciones.get(pedido.getKey());
+            int factor = presentacion != null ? presentacion.getUnidades() : 1;
+            BigDecimal costoBase = producto.costoDeValuacion();
 
             VentaItem item = VentaItem.builder()
                     .venta(venta)
                     .producto(producto)
+                    .presentacion(presentacion)
+                    .factor(factor)
                     // Precio y costo se congelan: una actualización de la lista no puede
-                    // cambiar lo que ya se vendió ni el margen con el que se vendió.
-                    .precioUnitario(producto.getPrecioVenta())
-                    .costoUnitario(producto.getCosto())
+                    // cambiar lo que ya se vendió ni el margen con el que se vendió. El
+                    // costo va POR PRESENTACIÓN: el de un tubo es el de tres pelotas, o
+                    // el margen del tubo se mediría contra el costo de una sola.
+                    .precioUnitario(presentacion != null ? presentacion.getPrecioVenta() : producto.getPrecioVenta())
+                    .costoUnitario(costoBase != null
+                            ? costoBase.multiply(BigDecimal.valueOf(factor))
+                            : null)
                     .cantidad(pedido.getValue())
                     .build();
             venta.getItems().add(item);
@@ -117,10 +151,35 @@ public class VentaService {
         ventaRepository.save(venta);
 
         for (VentaItem item : venta.getItems()) {
-            productoService.aplicarMovimiento(item.getProducto(), -item.getCantidad(),
+            productoService.aplicarMovimiento(item.getProducto(), -item.unidadesBase(),
                     MotivoMovimientoStock.VENTA, venta, null, null);
         }
         return aResponse(venta);
+    }
+
+    /** Producto + presentación: lo que define un renglón de la venta. */
+    private record ClaveRenglon(Long productoId, Long presentacionId) {
+    }
+
+    /**
+     * La presentación elegida, validando que sea de ESE producto y esté activa: un id de
+     * otro producto cobraría el precio equivocado y descontaría del stock equivocado.
+     */
+    private PresentacionProducto presentacionDe(Producto producto, Long presentacionId) {
+        if (presentacionId == null) {
+            return null;
+        }
+        PresentacionProducto presentacion = presentacionProductoRepository.findById(presentacionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Presentación", presentacionId));
+        if (presentacion.getProducto() == null
+                || !presentacion.getProducto().getId().equals(producto.getId())) {
+            throw new EstadoInvalidoException("Esa presentación no es de \"" + producto.getNombre() + "\".");
+        }
+        if (!presentacion.isActivo()) {
+            throw new EstadoInvalidoException(
+                    "La presentación \"" + presentacion.getNombre() + "\" está dada de baja.");
+        }
+        return presentacion;
     }
 
     @Transactional(readOnly = true)
