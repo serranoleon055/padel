@@ -69,10 +69,16 @@ public interface ReservaRepository extends JpaRepository<Reserva, Long> {
      * estadísticas recorren medio año de reservas agrupando por cliente y por cancha: sin
      * el fetch, cada una de esas lecturas dispara su propia consulta.
      */
-    @Query("SELECT r FROM Reserva r "
-            + "LEFT JOIN FETCH r.cancha LEFT JOIN FETCH r.pago LEFT JOIN FETCH r.cliente "
-            + "WHERE r.fecha BETWEEN :desde AND :hasta")
-    List<Reserva> findParaEstadisticas(@Param("desde") LocalDate desde, @Param("hasta") LocalDate hasta);
+    @Query("""
+            SELECT r FROM Reserva r
+            LEFT JOIN FETCH r.cancha c
+            LEFT JOIN FETCH r.pago
+            LEFT JOIN FETCH r.cliente
+            WHERE r.fecha BETWEEN :desde AND :hasta
+              AND (:lugarId IS NULL OR c.lugar.id = :lugarId)
+            """)
+    List<Reserva> findParaEstadisticas(@Param("desde") LocalDate desde, @Param("hasta") LocalDate hasta,
+            @Param("lugarId") Long lugarId);
 
     /**
      * Candidatas a darse por jugadas. Solo filtra por fecha: si ya terminaron se decide

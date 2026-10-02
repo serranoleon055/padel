@@ -2,7 +2,6 @@ package com.padel.rankpadel.service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -13,7 +12,6 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
@@ -32,8 +30,6 @@ import com.padel.rankpadel.dto.response.EstadisticasResponse.EmbudoTorneo;
 import com.padel.rankpadel.dto.response.EstadisticasResponse.IngresoMes;
 import com.padel.rankpadel.dto.response.EstadisticasResponse.OcupacionFranja;
 import com.padel.rankpadel.entity.Cancha;
-import com.padel.rankpadel.entity.HorarioCancha;
-import com.padel.rankpadel.entity.Producto;
 import com.padel.rankpadel.entity.Gasto;
 import com.padel.rankpadel.entity.Reserva;
 import com.padel.rankpadel.util.OrdenJornada;
@@ -112,21 +108,30 @@ public class EstadisticaService {
         LocalDate hoy = LocalDate.now();
         LocalDate desde = YearMonth.from(hoy).minusMonths(MESES_DEL_PANEL - 1).atDay(1);
 
-        List<Reserva> reservas = reservaRepository.findParaEstadisticas(desde, hoy).stream()
-                .filter(reserva -> deLugar(reserva, lugarId))
-                .toList();
+        // El filtro de sede va en el WHERE. Antes se traían las reservas de TODAS las
+        // sedes y se descartaban en Java: en un club con dos sedes, la mitad del semestre
+        // viajaba de la base para nada.
+        List<Reserva> reservas = reservaRepository.findParaEstadisticas(desde, hoy, lugarId);
 
         List<Reserva> ocupadas = reservas.stream()
                 .filter(reserva -> OCUPAN.contains(reserva.getEstado()) && reserva.getHoraInicio() != null && reserva.getFecha() != null)
                 .toList();
 
-        int horaApertura = horaAperturaDelLugar(lugarId);
+        // Las canchas y sus horarios, una sola vez. Los tres cálculos que los necesitan
+        // —la apertura, las horas abiertas del mes y la ocupación por cancha— preguntaban
+        // cada uno por su cuenta, cancha por cancha: con seis canchas eran dieciocho
+        // consultas por request para leer siempre lo mismo.
+        CalendarioClub calendario = cargarCalendario(lugarId);
+        int horaApertura = calendario.horaApertura();
         List<OcupacionFranja> heatmap = calcularHeatmap(ocupadas, horaApertura);
         List<CanchaUso> canchasMasUsadas = calcularCanchasMasUsadas(ocupadas);
 
-        List<SolicitudInscripcion> solicitudes = solicitudInscripcionRepository.findAll().stream()
-                .filter(solicitud -> solicitud.getTorneo() != null && deLugarTorneo(solicitud.getTorneo(), lugarId))
-                .toList();
+        // Solo las aprobadas de la ventana del panel y de la sede elegida, con el torneo y
+        // la categoría en el mismo viaje. Antes era un findAll() sobre el historial
+        // completo de inscripciones —que crece para siempre— más una consulta por fila al
+        // leer el torneo, que es LAZY.
+        List<SolicitudInscripcion> solicitudes = solicitudInscripcionRepository.findAprobadasDesde(
+                EstadoSolicitud.APROBADA, desde.atStartOfDay(), lugarId);
 
         List<Gasto> gastos = gastoRepository.findEntreFechas(desde, hoy);
         List<IngresoMes> ingresosPorMes = calcularIngresosPorMes(hoy, ocupadas, solicitudes, gastos);
@@ -149,13 +154,13 @@ public class EstadisticaService {
                 ? (double) reservasNoShow / turnosQueDebieronJugarse
                 : 0d;
 
-        List<EmbudoTorneo> embudoTorneos = calcularEmbudo(lugarId, solicitudes);
+        List<EmbudoTorneo> embudoTorneos = calcularEmbudo(lugarId);
         List<CategoriaDemanda> categoriasDemandadas = calcularCategoriasDemandadas(solicitudes);
 
-        List<OcupacionCancha> ocupacionPorCancha = calcularOcupacionPorCancha(desde, hoy, ocupadas, lugarId);
+        List<OcupacionCancha> ocupacionPorCancha = calcularOcupacionPorCancha(desde, hoy, ocupadas, calendario);
         long horasAbiertasDelMes = ocupacionPorCancha.isEmpty()
                 ? 0
-                : horasAbiertasDelMes(hoy, lugarId);
+                : horasAbiertasDelMes(hoy, calendario);
         List<ProductoRendimiento> rendimiento = calcularRendimientoProductos(desde, hoy);
 
         return EstadisticasResponse.builder()
@@ -203,21 +208,16 @@ public class EstadisticaService {
                 .toList();
     }
 
-    /**
-     * Hora a la que abre la sucursal: la apertura más temprana de sus canchas. Es el
-     * punto donde arranca la jornada para todo lo que se muestre por horario.
-     */
-    private int horaAperturaDelLugar(Long lugarId) {
+    /** Las canchas de la sede y sus bandas de horario, en dos consultas y no en veinte. */
+    private CalendarioClub cargarCalendario(Long lugarId) {
         List<Cancha> canchas = lugarId != null
                 ? canchaRepository.findByLugarIdAndActivoTrue(lugarId)
                 : canchaRepository.findByActivoTrue();
-        return canchas.stream()
-                .flatMap(cancha -> horarioCanchaRepository.findByCanchaIdAndActivoTrue(cancha.getId()).stream())
-                .map(HorarioCancha::getHoraApertura)
-                .filter(Objects::nonNull)
-                .mapToInt(LocalTime::getHour)
-                .min()
-                .orElse(0);
+        if (canchas.isEmpty()) {
+            return CalendarioClub.de(List.of(), List.of());
+        }
+        return CalendarioClub.de(canchas, horarioCanchaRepository
+                .findByCanchaIdInAndActivoTrue(canchas.stream().map(Cancha::getId).toList()));
     }
 
     /**
@@ -269,14 +269,8 @@ public class EstadisticaService {
     }
 
     /** Horas de cancha que el club tuvo a la venta este mes, sumando todas las canchas. */
-    private long horasAbiertasDelMes(LocalDate hoy, Long lugarId) {
-        LocalDate inicioDelMes = YearMonth.from(hoy).atDay(1);
-        List<Cancha> canchas = lugarId != null
-                ? canchaRepository.findByLugarIdAndActivoTrue(lugarId)
-                : canchaRepository.findByActivoTrue();
-        return canchas.stream()
-                .mapToLong(cancha -> horasAbiertas(cancha.getId(), inicioDelMes, hoy))
-                .sum();
+    private long horasAbiertasDelMes(LocalDate hoy, CalendarioClub calendario) {
+        return calendario.horasAbiertasDeTodas(YearMonth.from(hoy).atDay(1), hoy);
     }
 
     private IngresoMes buscarMes(List<IngresoMes> ingresos, YearMonth mes) {
@@ -329,7 +323,7 @@ public class EstadisticaService {
      * al 80%, no al 17%.
      */
     private List<OcupacionCancha> calcularOcupacionPorCancha(LocalDate desde, LocalDate hasta,
-            List<Reserva> ocupadas, Long lugarId) {
+            List<Reserva> ocupadas, CalendarioClub calendario) {
         Map<Long, long[]> minutosPorCancha = new HashMap<>();
         Map<Long, BigDecimal> facturadoPorCancha = new HashMap<>();
         for (Reserva reserva : ocupadas) {
@@ -341,15 +335,11 @@ public class EstadisticaService {
             facturadoPorCancha.merge(id, ingresoReserva(reserva), BigDecimal::add);
         }
 
-        List<Cancha> canchas = lugarId != null
-                ? canchaRepository.findByLugarIdAndActivoTrue(lugarId)
-                : canchaRepository.findByActivoTrue();
-
-        return canchas.stream()
+        return calendario.canchas().stream()
                 .map(cancha -> {
                     long minutos = minutosPorCancha.containsKey(cancha.getId())
                             ? minutosPorCancha.get(cancha.getId())[0] : 0L;
-                    long horasAbiertas = horasAbiertas(cancha.getId(), desde, hasta);
+                    long horasAbiertas = calendario.horasAbiertas(cancha.getId(), desde, hasta);
                     return OcupacionCancha.builder()
                             .canchaNombre(cancha.getNombre())
                             .horasVendidas(minutos / 60)
@@ -362,52 +352,6 @@ public class EstadisticaService {
                 .toList();
     }
 
-    /**
-     * Horas que una cancha estuvo abierta entre dos fechas, según su horario de atención
-     * y los días que el club abre.
-     */
-    /**
-     * Las horas que la cancha estuvo abierta en el período, sumando TODAS sus bandas
-     * activas. Varios horarios activos de la misma cancha son bandas por día de la semana
-     * —una para la semana y otra para el fin de semana—, y cada banda aporta solo los
-     * días que tiene marcados, así que sumarlas no duplica horas.
-     *
-     * <p>Antes se tomaba {@code horarios.get(0)} y se descartaba el resto, mientras que
-     * {@code horaAperturaDelLugar} sí recorría todos: los dos métodos asumían
-     * multiplicidades distintas del mismo dato, y el día que una cancha tenga dos bandas
-     * la ocupación salía mal y la apertura bien.
-     */
-    private long horasAbiertas(Long canchaId, LocalDate desde, LocalDate hasta) {
-        long total = 0;
-        for (HorarioCancha horario : horarioCanchaRepository.findByCanchaIdAndActivoTrue(canchaId)) {
-            if (horario.getHoraApertura() == null || horario.getHoraCierre() == null) {
-                continue;
-            }
-            long horasPorDia = Duration.between(horario.getHoraApertura(), horario.getHoraCierre()).toHours();
-            if (horasPorDia <= 0) {
-                // Cierra después de medianoche: la jornada cruza el día.
-                horasPorDia += 24;
-            }
-            long dias = desde.datesUntil(hasta.plusDays(1))
-                    .filter(dia -> diaActivo(horario.getDiasActivos(), dia))
-                    .count();
-            total += horasPorDia * dias;
-        }
-        return total;
-    }
-
-    private boolean diaActivo(String diasActivos, LocalDate fecha) {
-        if (diasActivos == null || diasActivos.isBlank()) {
-            return true;
-        }
-        String dia = String.valueOf(fecha.getDayOfWeek().getValue());
-        for (String token : diasActivos.split(",")) {
-            if (token.trim().equals(dia)) {
-                return true;
-            }
-        }
-        return false;
-    }
 
     /**
      * Qué conviene tener en la heladera. Ordenado por ganancia, no por facturación: un
@@ -444,13 +388,10 @@ public class EstadisticaService {
      * dejaba afuera la facturación del resto del catálogo.
      */
     private Kiosco calcularKiosco(List<ProductoRendimiento> rendimiento) {
-        BigDecimal capital = BigDecimal.ZERO;
-        for (Producto producto : productoRepository.buscar(null, true)) {
-            if (producto.isControlaStock() && producto.getCosto() != null) {
-                capital = capital.add(producto.getCosto().multiply(BigDecimal.valueOf(producto.getStock())));
-            }
-        }
-        long bajoMinimo = productoRepository.conStockBajo().size();
+        // Dos agregados en la base. Antes se traía el catálogo entero para multiplicar y
+        // sumar en Java, y las filas de stock bajo solo para contarlas.
+        BigDecimal capital = productoRepository.capitalEnStock();
+        long bajoMinimo = productoRepository.contarConStockBajo();
         return Kiosco.builder()
                 .facturado(rendimiento.stream().map(ProductoRendimiento::getFacturado)
                         .reduce(BigDecimal.ZERO, BigDecimal::add))
@@ -589,17 +530,28 @@ public class EstadisticaService {
      * imposibles del tipo "36/12". Acá se desglosa por categoría y el total del torneo
      * es la suma de los cupos, no un número suelto.
      */
-    private List<EmbudoTorneo> calcularEmbudo(Long lugarId, List<SolicitudInscripcion> solicitudes) {
+    private List<EmbudoTorneo> calcularEmbudo(Long lugarId) {
         List<Torneo> torneos = torneoRepository.findByActivoTrueAndEstadoIn(TORNEOS_ABIERTOS).stream()
                 .filter(torneo -> deLugarTorneo(torneo, lugarId))
                 .toList();
         if (torneos.isEmpty()) {
             return List.of();
         }
+        List<Long> ids = torneos.stream().map(Torneo::getId).toList();
+
+        // Los torneos abiertos pueden ser más viejos que la ventana del panel, así que la
+        // facturación de cada uno se pide agrupada en vez de filtrar la lista de
+        // solicitudes: lo único que hace falta es la suma.
+        Map<Long, BigDecimal> ingresoPorTorneo = new HashMap<>();
+        for (SolicitudInscripcionRepository.IngresoPorTorneo fila : solicitudInscripcionRepository
+                .sumarAprobadasPorTorneo(EstadoSolicitud.APROBADA, ids)) {
+            ingresoPorTorneo.put(fila.getTorneoId(),
+                    fila.getTotalPorJugador().multiply(BigDecimal.valueOf(INTEGRANTES_POR_SOLICITUD)));
+        }
 
         Map<Long, Map<Long, long[]>> conteo = new HashMap<>();
         Map<Long, String> nombreCategoria = new HashMap<>();
-        for (Object[] fila : parejaRepository.contarPorTorneoYCategoria(torneos.stream().map(Torneo::getId).toList())) {
+        for (Object[] fila : parejaRepository.contarPorTorneoYCategoria(ids)) {
             Long torneoId = (Long) fila[0];
             Long categoriaId = (Long) fila[1];
             nombreCategoria.put(categoriaId, (String) fila[2]);
@@ -610,11 +562,7 @@ public class EstadisticaService {
         return torneos.stream()
                 .map(torneo -> {
                     Map<Long, long[]> porCategoria = conteo.getOrDefault(torneo.getId(), Map.of());
-                    BigDecimal ingresos = solicitudes.stream()
-                            .filter(solicitud -> solicitud.getEstado() == EstadoSolicitud.APROBADA
-                                    && solicitud.getTorneo().getId().equals(torneo.getId()))
-                            .map(this::ingresoSolicitud)
-                            .reduce(BigDecimal.ZERO, BigDecimal::add);
+                    BigDecimal ingresos = ingresoPorTorneo.getOrDefault(torneo.getId(), BigDecimal.ZERO);
                     return EmbudoTorneo.builder()
                             .torneoId(torneo.getId())
                             .torneoNombre(torneo.getNombre())

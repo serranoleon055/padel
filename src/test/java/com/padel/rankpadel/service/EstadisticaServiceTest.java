@@ -100,8 +100,8 @@ class EstadisticaServiceTest {
     }
 
     private void conReservasYGastos(List<Reserva> reservas, List<Gasto> gastos) {
-        when(reservaRepository.findParaEstadisticas(any(), any())).thenReturn(reservas);
-        when(solicitudInscripcionRepository.findAll()).thenReturn(List.of());
+        when(reservaRepository.findParaEstadisticas(any(), any(), any())).thenReturn(reservas);
+        when(solicitudInscripcionRepository.findAprobadasDesde(any(), any(), any())).thenReturn(List.of());
         when(torneoRepository.findByActivoTrueAndEstadoIn(anyList())).thenReturn(List.of());
         when(gastoRepository.findEntreFechas(any(), any())).thenReturn(gastos);
         when(ventaRepository.totalPorMes(any())).thenReturn(List.of());
@@ -128,8 +128,8 @@ class EstadisticaServiceTest {
                 .cuposPorCategoria(new java.util.HashMap<>(java.util.Map.of(10L, 12, 20L, 8)))
                 .build();
 
-        when(reservaRepository.findParaEstadisticas(any(), any())).thenReturn(List.of());
-        when(solicitudInscripcionRepository.findAll()).thenReturn(List.of());
+        when(reservaRepository.findParaEstadisticas(any(), any(), any())).thenReturn(List.of());
+        when(solicitudInscripcionRepository.findAprobadasDesde(any(), any(), any())).thenReturn(List.of());
         when(gastoRepository.findEntreFechas(any(), any())).thenReturn(List.of());
         when(ventaRepository.totalPorMes(any())).thenReturn(List.of());
         when(torneoRepository.findByActivoTrueAndEstadoIn(anyList())).thenReturn(List.of(torneo));
@@ -163,8 +163,8 @@ class EstadisticaServiceTest {
                 .cuposPorCategoria(new java.util.HashMap<>(java.util.Map.of(10L, 12)))
                 .build();
 
-        when(reservaRepository.findParaEstadisticas(any(), any())).thenReturn(List.of());
-        when(solicitudInscripcionRepository.findAll()).thenReturn(List.of());
+        when(reservaRepository.findParaEstadisticas(any(), any(), any())).thenReturn(List.of());
+        when(solicitudInscripcionRepository.findAprobadasDesde(any(), any(), any())).thenReturn(List.of());
         when(gastoRepository.findEntreFechas(any(), any())).thenReturn(List.of());
         when(ventaRepository.totalPorMes(any())).thenReturn(List.of());
         when(torneoRepository.findByActivoTrueAndEstadoIn(anyList())).thenReturn(List.of(torneo));
@@ -258,6 +258,7 @@ class EstadisticaServiceTest {
     void ocupacion_sobreHorasAbiertas() {
         // Una cancha abierta de 18 a 23 (5 h/día) con un turno de 2 h vendido hoy.
         HorarioCancha horario = HorarioCancha.builder()
+                .cancha(cancha)
                 .horaApertura(LocalTime.of(18, 0)).horaCierre(LocalTime.of(23, 0))
                 .diasActivos(null).activo(true).build();
         Reserva turno = reserva(EstadoReserva.FINALIZADA, new BigDecimal("20000.00"), null);
@@ -265,10 +266,10 @@ class EstadisticaServiceTest {
 
         conReservas(List.of(turno));
         when(canchaRepository.findByActivoTrue()).thenReturn(List.of(cancha));
-        when(horarioCanchaRepository.findByCanchaIdAndActivoTrue(1L)).thenReturn(List.of(horario));
+        when(horarioCanchaRepository.findByCanchaIdInAndActivoTrue(List.of(1L))).thenReturn(List.of(horario));
         when(ventaRepository.rankingProductos(any(), any())).thenReturn(List.of());
-        when(productoRepository.buscar(null, true)).thenReturn(List.of());
-        when(productoRepository.conStockBajo()).thenReturn(List.of());
+        when(productoRepository.capitalEnStock()).thenReturn(BigDecimal.ZERO);
+        when(productoRepository.contarConStockBajo()).thenReturn(0L);
 
         EstadisticasResponse.OcupacionCancha ocupacion = estadisticaService.obtener(null)
                 .getOcupacionPorCancha().get(0);
@@ -285,8 +286,8 @@ class EstadisticaServiceTest {
         conReservas(List.of(reserva(EstadoReserva.FINALIZADA, new BigDecimal("20000.00"), null)));
         when(canchaRepository.findByActivoTrue()).thenReturn(List.of());
         when(ventaRepository.rankingProductos(any(), any())).thenReturn(List.of());
-        when(productoRepository.buscar(null, true)).thenReturn(List.of());
-        when(productoRepository.conStockBajo()).thenReturn(List.of());
+        when(productoRepository.capitalEnStock()).thenReturn(BigDecimal.ZERO);
+        when(productoRepository.contarConStockBajo()).thenReturn(0L);
 
         EstadisticasResponse.ResumenMes resumen = estadisticaService.obtener(null).getMesActual();
 
@@ -300,9 +301,9 @@ class EstadisticaServiceTest {
     @Test
     @DisplayName("Lo vendido en el mostrador suma al resultado del mes")
     void resultado_sumaLasVentasDelMostrador() {
-        when(reservaRepository.findParaEstadisticas(any(), any()))
+        when(reservaRepository.findParaEstadisticas(any(), any(), any()))
                 .thenReturn(List.of(reserva(EstadoReserva.FINALIZADA, new BigDecimal("20000.00"), null)));
-        when(solicitudInscripcionRepository.findAll()).thenReturn(List.of());
+        when(solicitudInscripcionRepository.findAprobadasDesde(any(), any(), any())).thenReturn(List.of());
         when(torneoRepository.findByActivoTrueAndEstadoIn(anyList())).thenReturn(List.of());
         when(gastoRepository.findEntreFechas(any(), any())).thenReturn(List.of());
         when(ventaRepository.totalPorMes(any()))
@@ -365,7 +366,7 @@ class EstadisticaServiceTest {
                 .build();
 
         conReservas(List.of());
-        when(solicitudInscripcionRepository.findAll()).thenReturn(List.of(solicitud));
+        when(solicitudInscripcionRepository.findAprobadasDesde(any(), any(), any())).thenReturn(List.of(solicitud));
 
         // Dos integrantes por solicitud, los dos pagan: 10.000 x 2.
         assertThat(estadisticaService.obtener(null).getMesActual().getFacturado())
@@ -380,24 +381,26 @@ class EstadisticaServiceTest {
         // tomaba solo la primera y se descartaba el resto, mientras que la apertura del
         // lugar sí recorría todas: los dos cálculos asumían cosas distintas del mismo dato.
         HorarioCancha semana = HorarioCancha.builder()
+                .cancha(cancha)
                 .horaApertura(LocalTime.of(18, 0)).horaCierre(LocalTime.of(23, 0))
                 .diasActivos("1,2,3,4,5").activo(true).build();
         HorarioCancha finDeSemana = HorarioCancha.builder()
+                .cancha(cancha)
                 .horaApertura(LocalTime.of(10, 0)).horaCierre(LocalTime.of(23, 0))
                 .diasActivos("6,7").activo(true).build();
 
         conReservas(List.of(reserva(EstadoReserva.FINALIZADA, new BigDecimal("20000.00"), null)));
         when(canchaRepository.findByActivoTrue()).thenReturn(List.of(cancha));
-        when(horarioCanchaRepository.findByCanchaIdAndActivoTrue(1L))
+        when(horarioCanchaRepository.findByCanchaIdInAndActivoTrue(List.of(1L)))
                 .thenReturn(List.of(semana, finDeSemana));
         when(ventaRepository.rankingProductos(any(), any())).thenReturn(List.of());
-        when(productoRepository.buscar(null, true)).thenReturn(List.of());
-        when(productoRepository.conStockBajo()).thenReturn(List.of());
+        when(productoRepository.capitalEnStock()).thenReturn(BigDecimal.ZERO);
+        when(productoRepository.contarConStockBajo()).thenReturn(0L);
 
         long conLasDos = estadisticaService.obtener(null)
                 .getOcupacionPorCancha().get(0).getHorasDisponibles();
 
-        when(horarioCanchaRepository.findByCanchaIdAndActivoTrue(1L)).thenReturn(List.of(semana));
+        when(horarioCanchaRepository.findByCanchaIdInAndActivoTrue(List.of(1L))).thenReturn(List.of(semana));
         long soloSemana = estadisticaService.obtener(null)
                 .getOcupacionPorCancha().get(0).getHorasDisponibles();
 

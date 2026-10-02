@@ -32,6 +32,27 @@ public interface ProductoRepository extends JpaRepository<Producto, Long> {
         """)
     List<Producto> conStockBajo();
 
+    /**
+     * Cuántos productos hay que reponer. Antes el panel traía las filas solo para contar
+     * el tamaño de la lista.
+     */
+    @Query("""
+        SELECT COUNT(p) FROM Producto p
+        WHERE p.activo = true AND p.controlaStock = true
+          AND p.stockMinimo > 0 AND p.stock <= p.stockMinimo
+        """)
+    long contarConStockBajo();
+
+    /**
+     * Plata parada en el depósito, valorizada al costo. Antes el panel se traía el
+     * catálogo entero para multiplicar y sumar en Java.
+     */
+    @Query("""
+        SELECT COALESCE(SUM(p.costo * p.stock), 0) FROM Producto p
+        WHERE p.activo = true AND p.controlaStock = true AND p.costo IS NOT NULL
+        """)
+    java.math.BigDecimal capitalEnStock();
+
     long countByProveedorIdAndActivoTrue(Long proveedorId);
 
     /** Para chequear nombre repetido sin importar mayúsculas ni espacios de más. */

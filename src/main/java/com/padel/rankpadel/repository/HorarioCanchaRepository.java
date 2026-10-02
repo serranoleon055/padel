@@ -22,4 +22,14 @@ public interface HorarioCanchaRepository extends JpaRepository<HorarioCancha, Lo
     List<HorarioCancha> findVigentesDeCanchasActivas();
 
     List<HorarioCancha> findByCanchaId(Long canchaId);
+
+    /**
+     * Los horarios vigentes de un grupo de canchas, en una sola consulta.
+     *
+     * <p>Las estadísticas preguntaban el horario cancha por cancha y lo hacían tres veces
+     * por request —la apertura del lugar, las horas abiertas del mes y la ocupación por
+     * cancha—: con seis canchas eran dieciocho viajes a la base para leer siempre lo
+     * mismo.
+     */
+    List<HorarioCancha> findByCanchaIdInAndActivoTrue(List<Long> canchaIds);
 }
