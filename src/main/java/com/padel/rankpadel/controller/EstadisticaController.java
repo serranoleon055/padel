@@ -19,9 +19,12 @@ public class EstadisticaController {
 
     private final EstadisticaService estadisticaService;
 
-    @Operation(summary = "Inteligencia de negocio para el panel admin (requiere ADMIN)")
+    @Operation(summary = "Inteligencia de negocio para el panel admin (requiere ADMIN)",
+            description = "Con `meses` se elige la ventana que mira el panel, contando el actual. Por defecto 6.")
     @GetMapping
-    public ResponseEntity<EstadisticasResponse> obtener(@RequestParam(required = false) Long lugarId) {
-        return ResponseEntity.ok(estadisticaService.obtener(lugarId));
+    public ResponseEntity<EstadisticasResponse> obtener(
+            @RequestParam(required = false) Long lugarId,
+            @RequestParam(required = false) Integer meses) {
+        return ResponseEntity.ok(estadisticaService.obtener(lugarId, meses));
     }
 }

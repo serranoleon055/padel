@@ -103,10 +103,22 @@ public class EstadisticaService {
     private static final List<EstadoTorneo> TORNEOS_ABIERTOS = List.of(
             EstadoTorneo.INSCRIPCION, EstadoTorneo.SORTEADO, EstadoTorneo.EN_CURSO);
 
+    /** Con la ventana por defecto de seis meses. */
     @Transactional(readOnly = true)
     public EstadisticasResponse obtener(Long lugarId) {
+        return obtener(lugarId, null);
+    }
+
+    /**
+     * @param meses cuántos meses mira el panel, contando el actual. Null usa el default.
+     *              Se acota entre 1 y 24: menos de uno no es un período y más de dos años
+     *              es traer medio historial para un gráfico de barras.
+     */
+    @Transactional(readOnly = true)
+    public EstadisticasResponse obtener(Long lugarId, Integer meses) {
+        int ventana = meses == null ? MESES_DEL_PANEL : Math.clamp(meses, 1, 24);
         LocalDate hoy = LocalDate.now();
-        LocalDate desde = YearMonth.from(hoy).minusMonths(MESES_DEL_PANEL - 1).atDay(1);
+        LocalDate desde = YearMonth.from(hoy).minusMonths(ventana - 1L).atDay(1);
 
         // El filtro de sede va en el WHERE. Antes se traían las reservas de TODAS las
         // sedes y se descartaban en Java: en un club con dos sedes, la mitad del semestre
@@ -134,7 +146,7 @@ public class EstadisticaService {
                 EstadoSolicitud.APROBADA, desde.atStartOfDay(), lugarId);
 
         List<Gasto> gastos = gastoRepository.findEntreFechas(desde, hoy);
-        List<IngresoMes> ingresosPorMes = calcularIngresosPorMes(hoy, ocupadas, solicitudes, gastos);
+        List<IngresoMes> ingresosPorMes = calcularIngresosPorMes(hoy, ventana, ocupadas, solicitudes, gastos);
 
         long reservasTotales = reservas.size();
         long reservasCanceladas = reservas.stream()
@@ -171,6 +183,7 @@ public class EstadisticaService {
                 .kiosco(calcularKiosco(rendimiento))
                 .heatmap(heatmap)
                 .horaApertura(horaApertura)
+                .mesesDelPanel(ventana)
                 .canchasMasUsadas(canchasMasUsadas)
                 .ingresosPorMes(ingresosPorMes)
                 .reservasTotales(reservasTotales)
@@ -439,14 +452,14 @@ public class EstadisticaService {
                 .toList();
     }
 
-    private List<IngresoMes> calcularIngresosPorMes(LocalDate hoy, List<Reserva> ocupadas,
+    private List<IngresoMes> calcularIngresosPorMes(LocalDate hoy, int ventana, List<Reserva> ocupadas,
             List<SolicitudInscripcion> solicitudes, List<Gasto> gastos) {
         List<IngresoMes> ingresos = new ArrayList<>();
         YearMonth actual = YearMonth.from(hoy);
 
         // Una sola consulta agrupada para los seis meses: recorrer las ventas en Java
         // sería traer todos los renglones del semestre para sumarlos.
-        LocalDate desdeVentas = actual.minusMonths(MESES_DEL_PANEL - 1).atDay(1);
+        LocalDate desdeVentas = actual.minusMonths(ventana - 1L).atDay(1);
         Map<String, BigDecimal> ventasPorMes = new HashMap<>();
         for (VentaRepository.TotalPorMes fila : ventaRepository.totalPorMes(desdeVentas)) {
             ventasPorMes.put(fila.getMes(), fila.getTotal());
@@ -456,7 +469,7 @@ public class EstadisticaService {
             costoPorMes.put(fila.getMes(), fila.getTotal());
         }
 
-        for (int i = MESES_DEL_PANEL - 1; i >= 0; i--) {
+        for (int i = ventana - 1; i >= 0; i--) {
             YearMonth mes = actual.minusMonths(i);
             BigDecimal turnos = ocupadas.stream()
                     .filter(reserva -> YearMonth.from(reserva.getFecha()).equals(mes))

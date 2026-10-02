@@ -23,6 +23,15 @@ public class EstadisticasResponse {
      * noche y ordenarlas por número las ponía primero, antes de la hora de apertura.
      */
     private int horaApertura;
+
+    /**
+     * Cuántos meses mira este informe, contando el actual. Viaja para que la pantalla
+     * pueda rotular el período en vez de decir "6 meses" escrito a mano: todo lo que no
+     * es del mes actual —ocupación, heatmap, canchas más usadas, categorías demandadas—
+     * se mide sobre esta ventana.
+     */
+    private int mesesDelPanel;
+
     private List<CanchaUso> canchasMasUsadas;
     private List<IngresoMes> ingresosPorMes;
     private long reservasTotales;
