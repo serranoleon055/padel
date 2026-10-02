@@ -51,6 +51,15 @@ public class CierreCaja {
     private BigDecimal seniasOnline;
     private BigDecimal egresos;
 
+    /**
+     * El fondo con el que se abrió el cajón ese día y los movimientos sueltos, congelados
+     * igual que el resto. Sin esto el arqueo firmado no se puede volver a explicar: la
+     * diferencia solo tiene sentido contra el fondo que había cuando se contó.
+     */
+    private BigDecimal fondoInicial;
+    private BigDecimal movimientosIngreso;
+    private BigDecimal movimientosEgreso;
+
     private String cerradoPor;
     private LocalDateTime cerradoEn;
     private String notas;

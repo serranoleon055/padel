@@ -50,6 +50,7 @@ public class ConfiguracionSedeService {
         if (dto.getCancelacionHorasMinimas() != null) {
             configuracion.setCancelacionHorasMinimas(Math.max(0, dto.getCancelacionHorasMinimas()));
         }
+        configuracion.setFondoFijo(dto.getFondoFijo());
         configuracion.setHorariosJson(aJson(dto.getHorarios()));
         configuracion.setGaleriaJson(aJson(dto.getGaleria()));
         configuracion.setFormasPagoJson(aJson(dto.getFormasPago()));
@@ -70,6 +71,7 @@ public class ConfiguracionSedeService {
                 .direccion(configuracion.getDireccion())
                 .mapsEmbedUrl(configuracion.getMapsEmbedUrl())
                 .cancelacionHorasMinimas(horasMinimasCancelacion(configuracion))
+                .fondoFijo(configuracion.getFondoFijo())
                 .horarios(desdeJson(configuracion.getHorariosJson(), new TypeReference<List<ConfiguracionSedeDto.HorarioSede>>() {}))
                 .galeria(desdeJson(configuracion.getGaleriaJson(), new TypeReference<List<ConfiguracionSedeDto.FotoSede>>() {}))
                 .formasPago(desdeJson(configuracion.getFormasPagoJson(), new TypeReference<List<String>>() {}))

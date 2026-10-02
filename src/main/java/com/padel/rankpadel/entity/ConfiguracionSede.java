@@ -32,6 +32,13 @@ public class ConfiguracionSede {
     @Builder.Default
     private Integer cancelacionHorasMinimas = 12;
 
+    /**
+     * El cambio que el club deja en el cajón para dar vuelto. Es solo la propuesta del
+     * formulario de apertura: lo que entra al arqueo es el monto que se declara al abrir,
+     * no este número.
+     */
+    private java.math.BigDecimal fondoFijo;
+
     private String whatsapp;
     private String instagram;
     private String facebook;

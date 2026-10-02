@@ -29,6 +29,9 @@ public class ConfiguracionSedeDto {
      */
     private Integer cancelacionHorasMinimas;
 
+    /** Propuesta de fondo para el formulario de apertura de caja. */
+    private java.math.BigDecimal fondoFijo;
+
     private List<HorarioSede> horarios;
     private List<FotoSede> galeria;
     private List<String> formasPago;

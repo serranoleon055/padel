@@ -28,17 +28,21 @@ import com.padel.rankpadel.dto.response.MovimientoCajaResponse;
 import com.padel.rankpadel.dto.response.PagedResponse;
 import com.padel.rankpadel.entity.CierreCaja;
 import com.padel.rankpadel.entity.Cobro;
+import com.padel.rankpadel.entity.MovimientoCaja;
 import com.padel.rankpadel.entity.Pago;
 import com.padel.rankpadel.entity.Reserva;
 import com.padel.rankpadel.entity.Venta;
+import com.padel.rankpadel.enums.ConceptoMovimientoCaja;
 import com.padel.rankpadel.enums.ConceptoPago;
 import com.padel.rankpadel.enums.EstadoPago;
 import com.padel.rankpadel.enums.EstadoReserva;
 import com.padel.rankpadel.enums.MedioPago;
+import com.padel.rankpadel.enums.TipoMovimientoCaja;
 import com.padel.rankpadel.exception.EstadoInvalidoException;
 import com.padel.rankpadel.repository.CierreCajaRepository;
 import com.padel.rankpadel.repository.CobroRepository;
 import com.padel.rankpadel.repository.GastoRepository;
+import com.padel.rankpadel.repository.MovimientoCajaRepository;
 import com.padel.rankpadel.repository.CobroRepository.TotalPorReserva;
 import com.padel.rankpadel.repository.PagoRepository;
 import com.padel.rankpadel.repository.ReservaRepository;
@@ -71,6 +75,8 @@ public class CajaService {
     private final CobroService cobroService;
     private final VentaService ventaService;
     private final GastoService gastoService;
+    private final MovimientoCajaRepository movimientoCajaRepository;
+    private final MovimientoCajaService movimientoCajaService;
     private final DisponibilidadCanchaService disponibilidadCanchaService;
 
     /**
@@ -125,7 +131,43 @@ public class CajaService {
         // a las 00:30 faltaba en el arqueo de esa noche y sobraba en el de la siguiente.
         BigDecimal egresos = gastoRepository.totalDeLaJornada(jornada);
         BigDecimal egresosEfectivo = gastoRepository.totalDeLaJornadaPorMedio(jornada, MedioPago.EFECTIVO);
+
+        // El fondo con el que arrancó el cajón y los movimientos que no son turnos ni
+        // ventas. Sin el fondo, el efectivo esperado arrancaba de cero y la diferencia del
+        // arqueo salía positiva TODAS las noches por el monto del cambio que el club deja
+        // para dar vuelto (V61).
+        List<MovimientoCaja> sueltos = movimientoCajaRepository.findDeLaJornada(jornada);
+        BigDecimal fondoInicial = BigDecimal.ZERO;
+        BigDecimal movimientosIngreso = BigDecimal.ZERO;
+        BigDecimal movimientosEgreso = BigDecimal.ZERO;
+        BigDecimal sueltosEfectivo = BigDecimal.ZERO;
+        BigDecimal ingresosVarios = BigDecimal.ZERO;
+        for (MovimientoCaja movimiento : sueltos) {
+            boolean esApertura = ConceptoMovimientoCaja.APERTURA.equals(movimiento.getConcepto());
+            boolean esEgreso = TipoMovimientoCaja.EGRESO.equals(movimiento.getTipo());
+            if (esApertura) {
+                // El fondo va solo en su propio número: sumarlo también a los ingresos
+                // mostraría el cambio del cajón dos veces en la misma pantalla.
+                fondoInicial = fondoInicial.add(movimiento.getMonto());
+            } else if (esEgreso) {
+                movimientosEgreso = movimientosEgreso.add(movimiento.getMonto());
+            } else {
+                movimientosIngreso = movimientosIngreso.add(movimiento.getMonto());
+            }
+            // Solo lo que el club GANÓ pesa en el resultado. Un depósito al banco o un
+            // retiro del dueño mueven el cajón y no la rentabilidad: la plata ya era suya.
+            if (movimiento.getConcepto() != null && movimiento.getConcepto().afectaResultado()) {
+                ingresosVarios = ingresosVarios.add(movimiento.aporteConSigno());
+            }
+            if (MedioPago.EFECTIVO.equals(movimiento.getMedio())) {
+                sueltosEfectivo = sueltosEfectivo.add(movimiento.aporteConSigno());
+            }
+        }
+
+        // La cuenta completa del cajón. El fondo entra por `sueltosEfectivo`, porque la
+        // apertura es un movimiento de ingreso en efectivo como cualquier otro.
         BigDecimal efectivoEsperado = totales.getOrDefault(MedioPago.EFECTIVO, BigDecimal.ZERO)
+                .add(sueltosEfectivo)
                 .subtract(egresosEfectivo);
 
         // Las señas de Mercado Pago se acreditan en la cuenta, no en el cajón: van
@@ -146,21 +188,30 @@ public class CajaService {
         BigDecimal inscripcionesOnline = seniasPorConcepto.getOrDefault(false, BigDecimal.ZERO);
 
         SaldoDelDia saldo = calcularSaldoPendiente(jornada);
+        BigDecimal totalDelDia = totalMostrador.add(seniasOnline).add(inscripcionesOnline)
+                .add(ingresosVarios);
 
         return CierreCajaResponse.builder()
                 .fecha(jornada)
                 .porMedio(porMedio)
                 .efectivoEsperado(efectivoEsperado)
+                .cajaAbierta(movimientoCajaService.estaAbierta(jornada))
+                .fondoInicial(fondoInicial)
+                .movimientosIngreso(movimientosIngreso)
+                .movimientosEgreso(movimientosEgreso)
+                .movimientosSueltos(sueltos.stream().map(movimientoCajaService::aResponse).toList())
+                .movimientosSueltosAnulados(movimientoCajaService.listarAnuladosDeLaJornada(jornada))
+                .porUsuario(desglosarPorUsuario(cobros, ventas, sueltos))
                 .totalMostrador(totalMostrador)
                 .seniasOnline(seniasOnline)
                 .inscripcionesOnline(inscripcionesOnline)
-                .totalDelDia(totalMostrador.add(seniasOnline).add(inscripcionesOnline))
+                .totalDelDia(totalDelDia)
                 .turnosConSaldo(saldo.turnos())
                 .saldoPendiente(saldo.monto())
                 .movimientos(agruparEnMovimientos(cobros))
                 .egresos(egresos)
                 .egresosEfectivo(egresosEfectivo)
-                .resultado(totalMostrador.add(seniasOnline).add(inscripcionesOnline).subtract(egresos))
+                .resultado(totalDelDia.subtract(egresos))
                 .gastos(gastoService.listarDeLaJornada(jornada))
                 .gastosAnulados(gastoService.listarAnuladosDeLaJornada(jornada))
                 .ventas(ventas.stream().map(ventaService::aResponse).toList())
@@ -197,6 +248,15 @@ public class CajaService {
         datos.setGastosAnulados(List.of());
         datos.setEgresos(null);
         datos.setResultado(null);
+        // El desglose por empleado es la herramienta del dueño para mirar al que cobra: no
+        // la ve el que cobra.
+        //
+        // Los movimientos sueltos SÍ se le muestran todos, retiros del dueño incluidos, por
+        // la misma razón que `egresosEfectivo`: si se le esconde plata que salió del cajón,
+        // lo que cuenta no le va a dar nunca contra el efectivo esperado y el arqueo se
+        // vuelve imposible de firmar. Lo que el empleado no puede es registrarlos, y eso ya
+        // lo bloquea `MovimientoCajaService`.
+        datos.setPorUsuario(List.of());
         return datos;
     }
 
@@ -228,6 +288,12 @@ public class CajaService {
                 .totalMostrador(actual.getTotalMostrador())
                 .seniasOnline(actual.getSeniasOnline())
                 .egresos(actual.getEgresos())
+                // El fondo y los movimientos sueltos también se congelan: sin ellos la
+                // diferencia firmada no se puede volver a explicar, porque solo tiene
+                // sentido contra el fondo que había en el cajón cuando se contó.
+                .fondoInicial(actual.getFondoInicial())
+                .movimientosIngreso(actual.getMovimientosIngreso())
+                .movimientosEgreso(actual.getMovimientosEgreso())
                 .cerradoPor(UsuarioActual.nombre())
                 .cerradoEn(LocalDateTime.now())
                 .notas(request.getNotas())
@@ -302,6 +368,78 @@ public class CajaService {
                 .reabiertoPor(cierre.getAnuladoPor())
                 .motivoReapertura(cierre.getMotivoReapertura())
                 .build();
+    }
+
+    /**
+     * Quién movió qué plata en la jornada.
+     *
+     * <p>El dato estaba en la base desde V44 —cada cobro, cada venta y cada movimiento
+     * guardan {@code registradoPor}— y no se mostraba en ninguna pantalla, así que el
+     * dueño no tenía forma de ver si el faltante aparece siempre en el mismo turno. Es lo
+     * que pidió como "arqueo por empleado", y se calcula: no hace falta ni una columna.
+     *
+     * <p>El arqueo firmado sigue siendo UNO por jornada, porque el cajón es físico y es
+     * uno solo: dos arqueos del mismo dinero serían contarlo dos veces. Lo que esto da es
+     * el desglose, que es la pregunta real.
+     */
+    private List<CierreCajaResponse.TotalPorUsuario> desglosarPorUsuario(List<Cobro> cobros,
+            List<Venta> ventas, List<MovimientoCaja> sueltos) {
+        Map<String, BigDecimal[]> porUsuario = new LinkedHashMap<>();
+        Map<String, Long> operaciones = new HashMap<>();
+        // [0] cobros, [1] ventas, [2] movimientos, [3] efectivo
+        for (Cobro cobro : cobros) {
+            BigDecimal[] fila = fila(porUsuario, cobro.getRegistradoPor());
+            fila[0] = fila[0].add(cobro.getMonto());
+            if (MedioPago.EFECTIVO.equals(cobro.getMedio())) {
+                fila[3] = fila[3].add(cobro.getMonto());
+            }
+            operaciones.merge(usuarioDe(cobro.getRegistradoPor()), 1L, Long::sum);
+        }
+        for (Venta venta : ventas) {
+            // Una venta sin medio está anotada en la cuenta de un turno: todavía no es
+            // plata que entró, igual que en el total del día.
+            if (venta.getMedio() == null) {
+                continue;
+            }
+            BigDecimal[] fila = fila(porUsuario, venta.getRegistradoPor());
+            fila[1] = fila[1].add(venta.getTotal());
+            if (MedioPago.EFECTIVO.equals(venta.getMedio())) {
+                fila[3] = fila[3].add(venta.getTotal());
+            }
+            operaciones.merge(usuarioDe(venta.getRegistradoPor()), 1L, Long::sum);
+        }
+        for (MovimientoCaja movimiento : sueltos) {
+            BigDecimal[] fila = fila(porUsuario, movimiento.getRegistradoPor());
+            fila[2] = fila[2].add(movimiento.aporteConSigno());
+            if (MedioPago.EFECTIVO.equals(movimiento.getMedio())) {
+                fila[3] = fila[3].add(movimiento.aporteConSigno());
+            }
+            operaciones.merge(usuarioDe(movimiento.getRegistradoPor()), 1L, Long::sum);
+        }
+
+        return porUsuario.entrySet().stream()
+                .map(entrada -> CierreCajaResponse.TotalPorUsuario.builder()
+                        .usuario(entrada.getKey())
+                        .cobros(entrada.getValue()[0])
+                        .ventas(entrada.getValue()[1])
+                        .movimientos(entrada.getValue()[2])
+                        .total(entrada.getValue()[0].add(entrada.getValue()[1]).add(entrada.getValue()[2]))
+                        .efectivo(entrada.getValue()[3])
+                        .operaciones(operaciones.getOrDefault(entrada.getKey(), 0L))
+                        .build())
+                .sorted((a, b) -> b.getTotal().compareTo(a.getTotal()))
+                .toList();
+    }
+
+    private BigDecimal[] fila(Map<String, BigDecimal[]> porUsuario, String registradoPor) {
+        return porUsuario.computeIfAbsent(usuarioDe(registradoPor),
+                clave -> new BigDecimal[] { BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                        BigDecimal.ZERO });
+    }
+
+    /** Lo cargado antes de que existiera el registro de usuario no tiene a quién colgarse. */
+    private String usuarioDe(String registradoPor) {
+        return registradoPor != null && !registradoPor.isBlank() ? registradoPor : "Sin registrar";
     }
 
     private CierreCajaResponse.Arqueo aArqueo(CierreCaja cierre) {

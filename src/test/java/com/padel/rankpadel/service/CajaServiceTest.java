@@ -33,17 +33,22 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import com.padel.rankpadel.dto.request.CierreCajaRequest;
 import com.padel.rankpadel.dto.response.CierreCajaResponse;
 import com.padel.rankpadel.dto.response.GastoResponse;
+import com.padel.rankpadel.dto.response.MovimientoSueltoResponse;
 import com.padel.rankpadel.entity.CierreCaja;
 import com.padel.rankpadel.entity.Cobro;
+import com.padel.rankpadel.entity.MovimientoCaja;
 import com.padel.rankpadel.entity.Pago;
 import com.padel.rankpadel.entity.Venta;
+import com.padel.rankpadel.enums.ConceptoMovimientoCaja;
 import com.padel.rankpadel.enums.ConceptoPago;
 import com.padel.rankpadel.enums.EstadoPago;
 import com.padel.rankpadel.enums.MedioPago;
+import com.padel.rankpadel.enums.TipoMovimientoCaja;
 import com.padel.rankpadel.exception.EstadoInvalidoException;
 import com.padel.rankpadel.repository.CierreCajaRepository;
 import com.padel.rankpadel.repository.CobroRepository;
 import com.padel.rankpadel.repository.GastoRepository;
+import com.padel.rankpadel.repository.MovimientoCajaRepository;
 import com.padel.rankpadel.repository.PagoRepository;
 import com.padel.rankpadel.repository.ReservaRepository;
 import com.padel.rankpadel.repository.VentaRepository;
@@ -71,6 +76,10 @@ class CajaServiceTest {
     @Mock
     private GastoService gastoService;
     @Mock
+    private MovimientoCajaRepository movimientoCajaRepository;
+    @Mock
+    private MovimientoCajaService movimientoCajaService;
+    @Mock
     private DisponibilidadCanchaService disponibilidadCanchaService;
 
     @InjectMocks
@@ -92,6 +101,10 @@ class CajaServiceTest {
         lenient().when(gastoService.listarDeLaJornada(any())).thenReturn(List.<GastoResponse>of());
         lenient().when(gastoService.listarAnuladosDeLaJornada(any())).thenReturn(List.<GastoResponse>of());
         lenient().when(cierreCajaRepository.findByFechaAndAnuladoEnIsNull(any())).thenReturn(Optional.empty());
+        lenient().when(movimientoCajaRepository.findDeLaJornada(any())).thenReturn(List.of());
+        lenient().when(movimientoCajaService.listarAnuladosDeLaJornada(any()))
+                .thenReturn(List.<MovimientoSueltoResponse>of());
+        lenient().when(movimientoCajaService.estaAbierta(any())).thenReturn(false);
         lenient().when(disponibilidadCanchaService.fechaDeJornadaActual()).thenReturn(JORNADA);
         entrarComo("dueño", "ROLE_ADMIN", "ROLE_DUENIO");
     }
@@ -371,6 +384,175 @@ class CajaServiceTest {
         void jornadaActual_delegaEnDisponibilidad() {
             assertThat(cajaService.jornadaActual()).isEqualTo(JORNADA);
             verify(disponibilidadCanchaService).fechaDeJornadaActual();
+        }
+    }
+
+    @Nested
+    @DisplayName("Fondo inicial y movimientos sueltos")
+    class FondoYMovimientos {
+
+        private MovimientoCaja suelto(ConceptoMovimientoCaja concepto, TipoMovimientoCaja tipo,
+                String monto, MedioPago medio) {
+            return MovimientoCaja.builder()
+                    .id(1L)
+                    .jornada(JORNADA)
+                    .fecha(LocalDateTime.of(2026, 8, 15, 18, 0))
+                    .concepto(concepto)
+                    .tipo(tipo)
+                    .monto(new BigDecimal(monto))
+                    .medio(medio)
+                    .registradoPor("empleado")
+                    .build();
+        }
+
+        @Test
+        @DisplayName("El fondo de apertura entra al efectivo esperado")
+        void fondo_sumaAlEfectivoEsperado() {
+            // Era el motivo por el que el arqueo no cerraba nunca: el efectivo esperado
+            // arrancaba de cero y el cambio que el club deja en el cajón aparecía como
+            // sobrante todas las noches.
+            when(movimientoCajaRepository.findDeLaJornada(JORNADA)).thenReturn(List.of(
+                    suelto(ConceptoMovimientoCaja.APERTURA, TipoMovimientoCaja.INGRESO,
+                            "20000", MedioPago.EFECTIVO)));
+            when(cobroRepository.findDeLaJornada(JORNADA))
+                    .thenReturn(List.of(cobro("30000", MedioPago.EFECTIVO)));
+
+            CierreCajaResponse cierre = cajaService.cierre(JORNADA);
+
+            assertThat(cierre.getFondoInicial()).isEqualByComparingTo("20000");
+            assertThat(cierre.getEfectivoEsperado()).isEqualByComparingTo("50000");
+            // El fondo NO es facturación: el club no ganó esa plata hoy.
+            assertThat(cierre.getTotalDelDia()).isEqualByComparingTo("30000");
+            // Y no se muestra dos veces: va en su propio número, no en los ingresos.
+            assertThat(cierre.getMovimientosIngreso()).isEqualByComparingTo("0");
+        }
+
+        @Test
+        @DisplayName("Un depósito al banco saca plata del cajón y no toca la rentabilidad")
+        void deposito_bajaElCajonYNoElResultado() {
+            when(movimientoCajaRepository.findDeLaJornada(JORNADA)).thenReturn(List.of(
+                    suelto(ConceptoMovimientoCaja.DEPOSITO_BANCO, TipoMovimientoCaja.EGRESO,
+                            "80000", MedioPago.EFECTIVO)));
+            when(cobroRepository.findDeLaJornada(JORNADA))
+                    .thenReturn(List.of(cobro("100000", MedioPago.EFECTIVO)));
+
+            CierreCajaResponse cierre = cajaService.cierre(JORNADA);
+
+            assertThat(cierre.getEfectivoEsperado()).isEqualByComparingTo("20000");
+            assertThat(cierre.getMovimientosEgreso()).isEqualByComparingTo("80000");
+            // La plata sigue siendo del club, solo cambió de lugar.
+            assertThat(cierre.getResultado()).isEqualByComparingTo("100000");
+        }
+
+        @Test
+        @DisplayName("El alquiler del salón sí es facturación del día")
+        void cobroVario_sumaAlResultado() {
+            when(movimientoCajaRepository.findDeLaJornada(JORNADA)).thenReturn(List.of(
+                    suelto(ConceptoMovimientoCaja.COBRO_VARIO, TipoMovimientoCaja.INGRESO,
+                            "45000", MedioPago.EFECTIVO)));
+
+            CierreCajaResponse cierre = cajaService.cierre(JORNADA);
+
+            assertThat(cierre.getTotalDelDia()).isEqualByComparingTo("45000");
+            assertThat(cierre.getResultado()).isEqualByComparingTo("45000");
+            assertThat(cierre.getEfectivoEsperado()).isEqualByComparingTo("45000");
+        }
+
+        @Test
+        @DisplayName("Un movimiento por transferencia no toca el cajón")
+        void movimientoNoEfectivo_noTocaElCajon() {
+            when(movimientoCajaRepository.findDeLaJornada(JORNADA)).thenReturn(List.of(
+                    suelto(ConceptoMovimientoCaja.COBRO_VARIO, TipoMovimientoCaja.INGRESO,
+                            "45000", MedioPago.TRANSFERENCIA)));
+
+            CierreCajaResponse cierre = cajaService.cierre(JORNADA);
+
+            assertThat(cierre.getEfectivoEsperado()).isEqualByComparingTo("0");
+            assertThat(cierre.getTotalDelDia()).isEqualByComparingTo("45000");
+        }
+
+        @Test
+        @DisplayName("Al firmar, el fondo y los movimientos quedan congelados")
+        void cerrar_congelaElFondo() {
+            when(movimientoCajaRepository.findDeLaJornada(JORNADA)).thenReturn(List.of(
+                    suelto(ConceptoMovimientoCaja.APERTURA, TipoMovimientoCaja.INGRESO,
+                            "20000", MedioPago.EFECTIVO),
+                    suelto(ConceptoMovimientoCaja.DEPOSITO_BANCO, TipoMovimientoCaja.EGRESO,
+                            "5000", MedioPago.EFECTIVO)));
+            when(cierreCajaRepository.existsByFechaAndAnuladoEnIsNull(JORNADA)).thenReturn(false);
+            when(cierreCajaRepository.save(any(CierreCaja.class))).thenAnswer(i -> i.getArgument(0));
+            CierreCajaRequest request = new CierreCajaRequest();
+            request.setFecha(JORNADA);
+            request.setEfectivoContado(new BigDecimal("15000"));
+
+            cajaService.cerrar(request);
+
+            ArgumentCaptor<CierreCaja> firmado = ArgumentCaptor.forClass(CierreCaja.class);
+            verify(cierreCajaRepository).save(firmado.capture());
+            // Sin el fondo congelado, la diferencia firmada no se puede volver a explicar.
+            assertThat(firmado.getValue().getFondoInicial()).isEqualByComparingTo("20000");
+            assertThat(firmado.getValue().getMovimientosEgreso()).isEqualByComparingTo("5000");
+            assertThat(firmado.getValue().getEfectivoEsperado()).isEqualByComparingTo("15000");
+            assertThat(firmado.getValue().getDiferencia()).isEqualByComparingTo("0");
+        }
+
+        @Test
+        @DisplayName("El desglose por empleado dice quién cobró qué")
+        void porUsuario_desglosa() {
+            Cobro deJuan = cobro("30000", MedioPago.EFECTIVO);
+            deJuan.setRegistradoPor("juan");
+            Cobro deAna = cobro("20000", MedioPago.TRANSFERENCIA);
+            deAna.setRegistradoPor("ana");
+            Venta ventaDeJuan = venta("5000", MedioPago.EFECTIVO);
+            ventaDeJuan.setRegistradoPor("juan");
+            when(cobroRepository.findDeLaJornada(JORNADA)).thenReturn(List.of(deJuan, deAna));
+            when(ventaRepository.findDeLaJornadaConItems(JORNADA)).thenReturn(List.of(ventaDeJuan));
+
+            CierreCajaResponse cierre = cajaService.cierre(JORNADA);
+
+            assertThat(cierre.getPorUsuario()).hasSize(2);
+            CierreCajaResponse.TotalPorUsuario juan = cierre.getPorUsuario().stream()
+                    .filter(fila -> "juan".equals(fila.getUsuario())).findFirst().orElseThrow();
+            assertThat(juan.getCobros()).isEqualByComparingTo("30000");
+            assertThat(juan.getVentas()).isEqualByComparingTo("5000");
+            assertThat(juan.getTotal()).isEqualByComparingTo("35000");
+            // Lo que se le pide al entregar el turno es el efectivo, no el total.
+            assertThat(juan.getEfectivo()).isEqualByComparingTo("35000");
+            assertThat(juan.getOperaciones()).isEqualTo(2);
+
+            CierreCajaResponse.TotalPorUsuario ana = cierre.getPorUsuario().stream()
+                    .filter(fila -> "ana".equals(fila.getUsuario())).findFirst().orElseThrow();
+            assertThat(ana.getEfectivo()).isEqualByComparingTo("0");
+        }
+
+        @Test
+        @DisplayName("El empleado no ve el desglose por empleado")
+        void porUsuario_noLoVeElMostrador() {
+            entrarComo("empleado", "ROLE_ADMIN", "ROLE_MOSTRADOR");
+            Cobro deJuan = cobro("30000", MedioPago.EFECTIVO);
+            deJuan.setRegistradoPor("juan");
+            when(cobroRepository.findDeLaJornada(JORNADA)).thenReturn(List.of(deJuan));
+
+            CierreCajaResponse cierre = cajaService.cierreParaQuienPide(JORNADA);
+
+            assertThat(cierre.getPorUsuario()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("Al empleado sí se le muestran todos los movimientos del cajón")
+        void movimientosSueltos_losVeElMostrador() {
+            // Incluido el retiro del dueño: si se le esconde plata que salió, lo que
+            // cuenta no le va a dar nunca contra el efectivo esperado.
+            entrarComo("empleado", "ROLE_ADMIN", "ROLE_MOSTRADOR");
+            when(movimientoCajaRepository.findDeLaJornada(JORNADA)).thenReturn(List.of(
+                    suelto(ConceptoMovimientoCaja.RETIRO_DUENIO, TipoMovimientoCaja.EGRESO,
+                            "50000", MedioPago.EFECTIVO)));
+            when(movimientoCajaService.aResponse(any())).thenReturn(new MovimientoSueltoResponse());
+
+            CierreCajaResponse cierre = cajaService.cierreParaQuienPide(JORNADA);
+
+            assertThat(cierre.getMovimientosSueltos()).hasSize(1);
+            assertThat(cierre.getEfectivoEsperado()).isEqualByComparingTo("-50000");
         }
     }
 

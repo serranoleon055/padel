@@ -115,6 +115,12 @@ public class SecurityConfig {
                         // mirar al empleado: si siempre falta plata el mismo día, o si
                         // siempre reabre el mismo. No lo ve el que cobra.
                         .requestMatchers(HttpMethod.GET, "/api/caja/cierres").hasRole("DUENIO")
+                        // Anular un movimiento de caja, por lo mismo que reabrir un
+                        // cierre: si el que cargó la plata puede borrarla, no queda nada
+                        // que auditar. Registrarlos sí puede el mostrador, pero no todos
+                        // los conceptos: eso lo decide el servicio, porque depende del
+                        // cuerpo del pedido y no de la ruta.
+                        .requestMatchers(HttpMethod.DELETE, "/api/movimientos-caja/**").hasRole("DUENIO")
                         .requestMatchers("/api/estadisticas/**").hasRole("DUENIO")
                         .requestMatchers("/api/gastos/**").hasRole("DUENIO")
                         .requestMatchers("/api/admins/**").hasRole("DUENIO")

@@ -75,7 +75,9 @@ class SeguridadEndpointsTest {
                 new Caso(HttpMethod.POST, "/api/promociones-cancha"),
                 new Caso(HttpMethod.POST, "/api/horarios-cancha"),
                 new Caso(HttpMethod.POST, "/api/sponsors"),
-                new Caso(HttpMethod.POST, "/api/importar/clientes"));
+                new Caso(HttpMethod.POST, "/api/importar/clientes"),
+                // Anular un movimiento de caja, por lo mismo que reabrir un cierre.
+                new Caso(HttpMethod.DELETE, "/api/movimientos-caja/1"));
     }
 
     /** Rutas que el empleado del mostrador también usa. */
@@ -91,7 +93,13 @@ class SeguridadEndpointsTest {
                 new Caso(HttpMethod.GET, "/api/clientes"),
                 // Leer el horario sí: la grilla de turnos lo necesita para ordenar la
                 // jornada. Cargarlo es decisión del dueño y está en la lista de arriba.
-                new Caso(HttpMethod.GET, "/api/horarios-cancha"));
+                new Caso(HttpMethod.GET, "/api/horarios-cancha"),
+                // Abrir la caja y cargar un movimiento los puede el empleado: es el que
+                // arranca el día. Qué CONCEPTOS puede cargar lo decide el servicio,
+                // porque depende del cuerpo del pedido y no de la ruta.
+                new Caso(HttpMethod.POST, "/api/movimientos-caja/apertura"),
+                new Caso(HttpMethod.POST, "/api/movimientos-caja"),
+                new Caso(HttpMethod.GET, "/api/movimientos-caja"));
     }
 
     /** Lo que tiene que andar sin estar logueado, porque lo usa el sitio público. */
