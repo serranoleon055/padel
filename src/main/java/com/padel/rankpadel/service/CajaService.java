@@ -361,6 +361,7 @@ public class CajaService {
                 .totalMostrador(cierre.getTotalMostrador())
                 .seniasOnline(cierre.getSeniasOnline())
                 .egresos(cierre.getEgresos())
+                .fondoInicial(cierre.getFondoInicial())
                 .cerradoPor(cierre.getCerradoPor())
                 .cerradoEn(cierre.getCerradoEn())
                 .notas(cierre.getNotas())

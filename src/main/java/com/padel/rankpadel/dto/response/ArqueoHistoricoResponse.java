@@ -38,6 +38,9 @@ public class ArqueoHistoricoResponse {
     private BigDecimal seniasOnline;
     private BigDecimal egresos;
 
+    /** El fondo con el que se abrió el cajón esa noche, congelado al firmar. */
+    private BigDecimal fondoInicial;
+
     private String cerradoPor;
     private LocalDateTime cerradoEn;
     private String notas;
