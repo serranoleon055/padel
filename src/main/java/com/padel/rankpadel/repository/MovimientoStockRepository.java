@@ -31,4 +31,12 @@ public interface MovimientoStockRepository extends JpaRepository<MovimientoStock
         ORDER BY m.fecha DESC
         """)
     List<MovimientoStock> findCompras(Pageable pageable);
+
+    /** Los renglones de una compra: este movimiento ES el renglón, no hay tabla aparte. */
+    @Query("""
+        SELECT m FROM MovimientoStock m JOIN FETCH m.producto
+        WHERE m.documentoCompra.id = :compraId
+        ORDER BY m.id ASC
+        """)
+    List<MovimientoStock> findDeLaCompra(@org.springframework.data.repository.query.Param("compraId") Long compraId);
 }

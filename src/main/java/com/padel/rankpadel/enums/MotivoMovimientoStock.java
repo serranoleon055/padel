@@ -13,6 +13,8 @@ public enum MotivoMovimientoStock {
     AJUSTE,
     /** Volvió al stock porque se anuló la venta. */
     ANULACION,
+    /** Salió del stock porque se anuló la compra que lo había traído. */
+    ANULACION_COMPRA,
     /** Se rompió, se venció o se perdió. */
     MERMA
 }

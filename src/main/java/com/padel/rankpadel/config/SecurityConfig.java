@@ -134,6 +134,8 @@ public class SecurityConfig {
                         // genérico del final y la tocaba el mostrador.
                         .requestMatchers(HttpMethod.PATCH, "/api/productos/**").hasRole("DUENIO")
                         .requestMatchers("/api/proveedores/**").hasRole("DUENIO")
+                        // Las compras son plata que sale del club: las carga el dueño.
+                        .requestMatchers("/api/compras/**").hasRole("DUENIO")
                         .requestMatchers(HttpMethod.DELETE, "/api/torneos/**").hasRole("DUENIO")
                         .requestMatchers(HttpMethod.PUT, "/api/configuracion-sede").hasRole("DUENIO")
                         .requestMatchers(HttpMethod.POST, "/api/configuracion-sede/**").hasRole("DUENIO")

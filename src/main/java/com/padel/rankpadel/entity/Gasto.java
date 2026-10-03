@@ -72,10 +72,20 @@ public class Gasto {
 
     private LocalDateTime creadoEn;
 
-    /** Si el gasto fue una compra de mercadería, a qué producto entró. */
+    /** Si el gasto fue una compra de un solo producto, a cuál entró. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "producto_id")
     private Producto producto;
+
+    /** El proveedor, como FK. El texto libre de arriba queda como respaldo. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "proveedor_id")
+    private Proveedor proveedorRef;
+
+    /** La compra formal que lo generó, si vino de un comprobante con varios productos. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "documento_compra_id")
+    private DocumentoCompra documentoCompra;
 
     /**
      * Si el egreso fue compra de mercadería. Es lo que separa el gasto operativo del

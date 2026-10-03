@@ -48,9 +48,15 @@ public interface GastoRepository extends JpaRepository<Gasto, Long> {
     BigDecimal totalDeLaJornadaPorMedio(@Param("jornada") LocalDate jornada,
             @Param("medio") MedioPago medio);
 
+    /**
+     * Los egresos que SALIERON de la caja en la jornada. Excluye los que todavía no se
+     * pagaron (medio nulo = compra a cuenta corriente del proveedor): la mercadería entró
+     * y pesa en la rentabilidad del mes, pero la plata no se movió. Es la misma distinción
+     * entre devengado y caja que ya rige del lado de los ingresos.
+     */
     @Query("""
             SELECT COALESCE(SUM(g.monto), 0) FROM Gasto g
-            WHERE g.jornada = :jornada AND g.anuladoEn IS NULL
+            WHERE g.jornada = :jornada AND g.medio IS NOT NULL AND g.anuladoEn IS NULL
             """)
     BigDecimal totalDeLaJornada(@Param("jornada") LocalDate jornada);
 }

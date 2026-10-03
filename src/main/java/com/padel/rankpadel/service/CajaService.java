@@ -44,6 +44,7 @@ import com.padel.rankpadel.repository.CobroRepository;
 import com.padel.rankpadel.repository.GastoRepository;
 import com.padel.rankpadel.repository.MovimientoCajaRepository;
 import com.padel.rankpadel.repository.CobroRepository.TotalPorReserva;
+import com.padel.rankpadel.repository.PagoProveedorRepository;
 import com.padel.rankpadel.repository.PagoRepository;
 import com.padel.rankpadel.repository.ReservaRepository;
 import com.padel.rankpadel.repository.VentaRepository;
@@ -76,6 +77,7 @@ public class CajaService {
     private final VentaService ventaService;
     private final GastoService gastoService;
     private final MovimientoCajaRepository movimientoCajaRepository;
+    private final PagoProveedorRepository pagoProveedorRepository;
     private final MovimientoCajaService movimientoCajaService;
     private final DisponibilidadCanchaService disponibilidadCanchaService;
 
@@ -129,8 +131,14 @@ public class CajaService {
         // Por JORNADA, igual que los ingresos. Hasta V58 los egresos se buscaban por día
         // de calendario porque `gastos` no tenía la columna, así que un pago en efectivo
         // a las 00:30 faltaba en el arqueo de esa noche y sobraba en el de la siguiente.
-        BigDecimal egresos = gastoRepository.totalDeLaJornada(jornada);
-        BigDecimal egresosEfectivo = gastoRepository.totalDeLaJornadaPorMedio(jornada, MedioPago.EFECTIVO);
+        // Los pagos a proveedor son egresos como cualquier otro: la compra a cuenta no
+        // movió plata, pero cuando se le paga, sale del cajón igual que una factura de
+        // luz. Si no se contaran acá, el arqueo daría faltante cada vez que el club le
+        // paga al que trae las bebidas.
+        BigDecimal egresos = gastoRepository.totalDeLaJornada(jornada)
+                .add(pagoProveedorRepository.totalDeLaJornada(jornada));
+        BigDecimal egresosEfectivo = gastoRepository.totalDeLaJornadaPorMedio(jornada, MedioPago.EFECTIVO)
+                .add(pagoProveedorRepository.totalDeLaJornadaPorMedio(jornada, MedioPago.EFECTIVO));
 
         // El fondo con el que arrancó el cajón y los movimientos que no son turnos ni
         // ventas. Sin el fondo, el efectivo esperado arrancaba de cero y la diferencia del

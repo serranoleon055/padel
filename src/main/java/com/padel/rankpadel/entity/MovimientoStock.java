@@ -54,6 +54,15 @@ public class MovimientoStock {
     @JoinColumn(name = "venta_id")
     private Venta venta;
 
+    /**
+     * La compra formal que lo trajo. Este movimiento ES el renglón de esa compra: no hay
+     * tabla de renglones aparte, justamente para que el stock no pueda dejar de coincidir
+     * con la suma de sus movimientos.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "documento_compra_id")
+    private DocumentoCompra documentoCompra;
+
     /** Cuánto costó la unidad en esta compra. */
     private BigDecimal costoUnitario;
 

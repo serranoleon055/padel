@@ -19,6 +19,7 @@ import com.padel.rankpadel.dto.request.ProductoRequest;
 import com.padel.rankpadel.dto.response.MovimientoStockResponse;
 import com.padel.rankpadel.dto.response.PresentacionResponse;
 import com.padel.rankpadel.dto.response.ProductoResponse;
+import com.padel.rankpadel.entity.DocumentoCompra;
 import com.padel.rankpadel.entity.MovimientoStock;
 import com.padel.rankpadel.entity.Producto;
 import com.padel.rankpadel.entity.Proveedor;
@@ -192,19 +193,8 @@ public class ProductoService {
             registrarGastoDeCompra(producto, request);
         }
 
-        // El promedio se recalcula ANTES de sumar las unidades, porque necesita saber
-        // cuántas había.
-        if (request.getCostoUnitario() != null) {
-            producto.setCostoPromedio(promedioPonderado(producto, request.getCantidad(),
-                    request.getCostoUnitario()));
-            // Y el costo del producto pasa a ser el de la última compra: es lo que el club
-            // tiene en la cabeza cuando mira el precio.
-            producto.setCosto(request.getCostoUnitario());
-            productoRepository.save(producto);
-        }
-
-        aplicarMovimiento(producto, request.getCantidad(), MotivoMovimientoStock.COMPRA,
-                null, request.getCostoUnitario(), request.getNotas(), cuando);
+        ingresarMercaderia(producto, request.getCantidad(), request.getCostoUnitario(),
+                cuando, null, request.getNotas());
 
         return aResponse(producto);
     }
@@ -277,6 +267,46 @@ public class ProductoService {
         return aResponse(producto);
     }
 
+    /**
+     * Entrada de mercadería: recalcula el costo promedio, actualiza el último costo y
+     * asienta el movimiento.
+     *
+     * <p>Es el único camino por donde entra stock comprado, lo use la compra de un
+     * producto suelto o una compra formal con varios renglones. Si cada uno hiciera su
+     * parte, el promedio ponderado terminaría calculado de dos maneras.
+     *
+     * @param compra la compra formal que lo trajo, o null si es una compra suelta
+     */
+    @Transactional
+    public void ingresarMercaderia(Producto producto, int cantidad, BigDecimal costoUnitario,
+            LocalDateTime cuando, DocumentoCompra compra, String notas) {
+        exigirControlDeStock(producto, "comprar mercadería");
+        if (costoUnitario != null) {
+            // El promedio se recalcula ANTES de sumar las unidades: necesita saber cuántas
+            // había.
+            producto.setCostoPromedio(promedioPonderado(producto, cantidad, costoUnitario));
+            producto.setCosto(costoUnitario);
+            productoRepository.save(producto);
+        }
+        aplicarMovimiento(producto, cantidad, MotivoMovimientoStock.COMPRA, null,
+                costoUnitario, notas, cuando, compra);
+    }
+
+    /**
+     * Deshace la entrada de una compra anulada. No borra el movimiento original: emite
+     * uno compensatorio, porque el stock tiene que seguir siendo la suma de sus
+     * movimientos y un renglón que desaparece deja un faltante sin explicación.
+     *
+     * <p>El costo promedio NO se recalcula hacia atrás: ya se usó para congelar el costo
+     * de lo que se vendió en el medio, y rehacerlo cambiaría márgenes ya cerrados. El
+     * promedio se corrige solo con la próxima compra.
+     */
+    @Transactional
+    public void revertirIngreso(Producto producto, int cantidad, DocumentoCompra compra, String notas) {
+        aplicarMovimiento(producto, -cantidad, MotivoMovimientoStock.ANULACION_COMPRA, null,
+                null, notas, LocalDateTime.now(), compra);
+    }
+
     @Transactional(readOnly = true)
     public List<MovimientoStockResponse> movimientos(Long productoId) {
         return movimientoStockRepository
@@ -313,6 +343,14 @@ public class ProductoService {
     public void aplicarMovimiento(Producto producto, int cantidad, MotivoMovimientoStock motivo,
             com.padel.rankpadel.entity.Venta venta, BigDecimal costoUnitario, String notas,
             LocalDateTime cuando) {
+        aplicarMovimiento(producto, cantidad, motivo, venta, costoUnitario, notas, cuando, null);
+    }
+
+    /** @param compra la compra formal que lo trajo, para poder revertirla entera */
+    @Transactional
+    public void aplicarMovimiento(Producto producto, int cantidad, MotivoMovimientoStock motivo,
+            com.padel.rankpadel.entity.Venta venta, BigDecimal costoUnitario, String notas,
+            LocalDateTime cuando, DocumentoCompra compra) {
         if (!producto.isControlaStock()) {
             return;
         }
@@ -325,6 +363,7 @@ public class ProductoService {
                 .motivo(motivo)
                 .fecha(cuando)
                 .venta(venta)
+                .documentoCompra(compra)
                 .costoUnitario(costoUnitario)
                 .registradoPor(UsuarioActual.nombre())
                 .notas(notas)

@@ -49,6 +49,7 @@ import com.padel.rankpadel.repository.CierreCajaRepository;
 import com.padel.rankpadel.repository.CobroRepository;
 import com.padel.rankpadel.repository.GastoRepository;
 import com.padel.rankpadel.repository.MovimientoCajaRepository;
+import com.padel.rankpadel.repository.PagoProveedorRepository;
 import com.padel.rankpadel.repository.PagoRepository;
 import com.padel.rankpadel.repository.ReservaRepository;
 import com.padel.rankpadel.repository.VentaRepository;
@@ -78,6 +79,8 @@ class CajaServiceTest {
     @Mock
     private MovimientoCajaRepository movimientoCajaRepository;
     @Mock
+    private PagoProveedorRepository pagoProveedorRepository;
+    @Mock
     private MovimientoCajaService movimientoCajaService;
     @Mock
     private DisponibilidadCanchaService disponibilidadCanchaService;
@@ -102,6 +105,9 @@ class CajaServiceTest {
         lenient().when(gastoService.listarAnuladosDeLaJornada(any())).thenReturn(List.<GastoResponse>of());
         lenient().when(cierreCajaRepository.findByFechaAndAnuladoEnIsNull(any())).thenReturn(Optional.empty());
         lenient().when(movimientoCajaRepository.findDeLaJornada(any())).thenReturn(List.of());
+        lenient().when(pagoProveedorRepository.totalDeLaJornada(any())).thenReturn(BigDecimal.ZERO);
+        lenient().when(pagoProveedorRepository.totalDeLaJornadaPorMedio(any(), any()))
+                .thenReturn(BigDecimal.ZERO);
         lenient().when(movimientoCajaService.listarAnuladosDeLaJornada(any()))
                 .thenReturn(List.<MovimientoSueltoResponse>of());
         lenient().when(movimientoCajaService.estaAbierta(any())).thenReturn(false);
