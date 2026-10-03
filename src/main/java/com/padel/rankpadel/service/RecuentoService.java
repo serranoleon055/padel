@@ -3,6 +3,7 @@ package com.padel.rankpadel.service;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -40,6 +41,8 @@ import lombok.RequiredArgsConstructor;
 @Service
 @RequiredArgsConstructor
 public class RecuentoService {
+
+    private static final DateTimeFormatter DIA_MES_ANIO = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     private final RecuentoRepository recuentoRepository;
     private final ProductoRepository productoRepository;
@@ -159,7 +162,10 @@ public class RecuentoService {
 
             productoService.aplicarDeRecuento(item.getProducto(), diferencia, recuento,
                     item.getCostoUnitario(),
-                    "Conteo del " + recuento.getFecha() + ": contadas " + item.getStockContado()
+                    // La fecha se escribe como la lee una persona: la nota del movimiento
+                    // sale en el kardex, al lado de fechas ya formateadas.
+                    "Conteo del " + recuento.getFecha().format(DIA_MES_ANIO)
+                            + ": contadas " + item.getStockContado()
                             + ", el sistema decía " + item.getStockSistema());
 
             BigDecimal valor = valorizar(item);
