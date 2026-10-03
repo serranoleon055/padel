@@ -32,6 +32,7 @@ import com.padel.rankpadel.repository.DocumentoCompraRepository;
 import com.padel.rankpadel.repository.MovimientoStockRepository;
 import com.padel.rankpadel.repository.ProductoRepository;
 import com.padel.rankpadel.repository.ProveedorRepository;
+import com.padel.rankpadel.util.NombreEnum;
 import com.padel.rankpadel.util.UsuarioActual;
 
 import lombok.RequiredArgsConstructor;
@@ -136,7 +137,7 @@ public class CompraService {
 
         for (MovimientoStock movimiento : movimientoStockRepository.findDeLaCompra(id)) {
             productoService.revertirIngreso(movimiento.getProducto(), movimiento.getCantidad(),
-                    compra, "Anulación de " + compra.getTipoComprobante() + " " + compra.getNumero());
+                    compra, "Anulación de " + NombreEnum.enMinuscula(compra.getTipoComprobante()) + " " + compra.getNumero());
         }
         if (compra.getGasto() != null && !compra.getGasto().estaAnulado()) {
             gastoService.anular(compra.getGasto().getId(),
@@ -183,7 +184,7 @@ public class CompraService {
     private void exigirComprobanteLibre(Proveedor proveedor, CompraRequest request, String numero) {
         if (documentoCompraRepository.existsByProveedorIdAndTipoComprobanteAndNumeroAndAnuladoEnIsNull(
                 proveedor.getId(), request.getTipoComprobante(), numero)) {
-            throw new EstadoInvalidoException("Ya cargaste " + request.getTipoComprobante()
+            throw new EstadoInvalidoException("Ya cargaste el " + NombreEnum.enMinuscula(request.getTipoComprobante())
                     + " " + numero + " de " + proveedor.getNombre() + ".");
         }
     }
@@ -193,7 +194,7 @@ public class CompraService {
         GastoRequest pedido = new GastoRequest();
         pedido.setFecha(request.getFecha());
         pedido.setCategoria(CategoriaGasto.INSUMOS);
-        pedido.setDescripcion(request.getTipoComprobante() + " " + numero + " · " + proveedor.getNombre());
+        pedido.setDescripcion(NombreEnum.capitalizado(request.getTipoComprobante()) + " " + numero + " · " + proveedor.getNombre());
         pedido.setMonto(total);
         // Null = a cuenta corriente. El egreso se registra igual porque la mercadería ya
         // entró y pesa en la rentabilidad, pero no sale del cajón hasta que se le pague.
@@ -238,7 +239,7 @@ public class CompraService {
                 .jornada(compra.getJornada())
                 .total(compra.getTotal())
                 .medio(compra.getMedio() != null ? compra.getMedio().name() : null)
-                .aCredito(compra.esACredito())
+                .quedaACuenta(compra.esACredito())
                 .registradoPor(compra.getRegistradoPor())
                 .notas(compra.getNotas())
                 .items(items)

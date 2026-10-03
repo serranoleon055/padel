@@ -18,11 +18,19 @@ import com.padel.rankpadel.entity.DocumentoCompra;
  */
 public interface DocumentoCompraRepository extends JpaRepository<DocumentoCompra, Long> {
 
+    /**
+     * El listado para la pantalla, anuladas incluidas.
+     *
+     * <p>Es la excepción a la regla de filtrar {@code anuladoEn IS NULL}: esa regla vale
+     * para todo lo que SUMA plata, y acá no se suma nada. Esconder la anulada sería
+     * volver a la baja física que V51 vino a sacar, porque de la compra no quedaría
+     * rastro en ninguna pantalla. La respuesta viaja con la fecha de anulación y la
+     * tabla la rotula.
+     */
     @Query("""
             SELECT c FROM DocumentoCompra c
             JOIN FETCH c.proveedor
-            WHERE c.anuladoEn IS NULL
-              AND (:proveedorId IS NULL OR c.proveedor.id = :proveedorId)
+            WHERE (:proveedorId IS NULL OR c.proveedor.id = :proveedorId)
             ORDER BY c.fecha DESC, c.id DESC
             """)
     Page<DocumentoCompra> buscar(@Param("proveedorId") Long proveedorId, Pageable pageable);

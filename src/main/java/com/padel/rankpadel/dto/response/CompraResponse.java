@@ -31,7 +31,14 @@ public class CompraResponse {
     private BigDecimal total;
     /** Null = quedó a cuenta corriente del proveedor. */
     private String medio;
-    private boolean aCredito;
+    /**
+     * Quedó a cuenta corriente del proveedor.
+     *
+     * <p>No se llama {@code aCredito}: un booleano con una sola letra minúscula adelante
+     * genera {@code isACredito()}, y Jackson lo publica como {@code "acredito"}. El campo
+     * tipado del front nunca llegaba y la columna salía vacía, sin un solo error.
+     */
+    private boolean quedaACuenta;
     private String registradoPor;
     private String notas;
 

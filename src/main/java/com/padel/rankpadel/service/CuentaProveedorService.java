@@ -22,6 +22,7 @@ import com.padel.rankpadel.exception.ResourceNotFoundException;
 import com.padel.rankpadel.repository.DocumentoCompraRepository;
 import com.padel.rankpadel.repository.PagoProveedorRepository;
 import com.padel.rankpadel.repository.ProveedorRepository;
+import com.padel.rankpadel.util.NombreEnum;
 import com.padel.rankpadel.util.UsuarioActual;
 
 import lombok.RequiredArgsConstructor;
@@ -60,7 +61,7 @@ public class CuentaProveedorService {
             movimientos.add(CuentaProveedorResponse.Movimiento.builder()
                     .fecha(compra.getFecha())
                     .tipo("COMPRA")
-                    .descripcion(compra.getTipoComprobante() + " " + compra.getNumero())
+                    .descripcion(NombreEnum.capitalizado(compra.getTipoComprobante()) + " " + compra.getNumero())
                     .monto(compra.getTotal())
                     .build());
         }
@@ -68,7 +69,7 @@ public class CuentaProveedorService {
             movimientos.add(CuentaProveedorResponse.Movimiento.builder()
                     .fecha(pago.getFecha())
                     .tipo("PAGO")
-                    .descripcion("Pago " + (pago.getMedio() != null ? pago.getMedio().name().toLowerCase() : ""))
+                    .descripcion(("Pago " + (pago.getMedio() != null ? NombreEnum.enMinuscula(pago.getMedio()) : "")).trim())
                     .monto(pago.getMonto().negate())
                     .build());
         }
@@ -149,4 +150,5 @@ public class CuentaProveedorService {
         pago.setMotivoAnulacion(motivo);
         pagoProveedorRepository.save(pago);
     }
+
 }

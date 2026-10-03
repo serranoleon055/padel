@@ -23,11 +23,17 @@ public interface MovimientoStockRepository extends JpaRepository<MovimientoStock
      * Las entradas de mercadería, de todos los productos. Es el historial de compras del
      * club: sin esto había que abrir producto por producto para saber a quién se le
      * compró y a cuánto.
+     *
+     * <p>Van también las reversiones: una compra anulada deja su entrada y su
+     * compensatorio, y mostrar solo la entrada diría que esa mercadería está, cuando el
+     * stock ya la devolvió.
      */
     @Query("""
         SELECT m FROM MovimientoStock m
         JOIN FETCH m.producto
-        WHERE m.motivo = com.padel.rankpadel.enums.MotivoMovimientoStock.COMPRA
+        WHERE m.motivo IN (
+            com.padel.rankpadel.enums.MotivoMovimientoStock.COMPRA,
+            com.padel.rankpadel.enums.MotivoMovimientoStock.ANULACION_COMPRA)
         ORDER BY m.fecha DESC
         """)
     List<MovimientoStock> findCompras(Pageable pageable);
