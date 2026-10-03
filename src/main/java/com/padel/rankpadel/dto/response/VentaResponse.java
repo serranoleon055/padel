@@ -19,7 +19,11 @@ public class VentaResponse {
 
     private Long id;
     private LocalDateTime fecha;
+    /** Lo que se cobra, ya con el descuento aplicado. */
     private BigDecimal total;
+    /** Lo que se bonificó sobre el precio de lista. Cero si no hubo descuento. */
+    private BigDecimal descuento;
+    private String motivoDescuento;
     private String medio;
     private Long clienteId;
     private String clienteNombre;
@@ -50,6 +54,9 @@ public class VentaResponse {
         private int factor;
         private int cantidad;
         private BigDecimal precioUnitario;
+        /** Lo bonificado en este renglón: su parte del descuento de la venta. */
+        private BigDecimal descuento;
+        /** Precio de lista por cantidad, menos el descuento. */
         private BigDecimal subtotal;
     }
 }

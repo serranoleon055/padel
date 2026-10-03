@@ -70,7 +70,21 @@ public class VentaItem {
      */
     private BigDecimal costoUnitario;
 
+    /**
+     * Lo que se bonificó en este renglón, en plata y no en porcentaje: el mostrador
+     * redondea, no calcula. Guardar el importe evita que un redondeo distinto en cada
+     * pantalla haga que el total no dé.
+     */
+    @Builder.Default
+    private BigDecimal descuento = BigDecimal.ZERO;
+
+    /** Lo que se cobra por el renglón: la lista menos lo bonificado. */
     public BigDecimal subtotal() {
+        return bruto().subtract(descuento == null ? BigDecimal.ZERO : descuento);
+    }
+
+    /** Lo que valía a precio de lista, antes del descuento. */
+    public BigDecimal bruto() {
         return precioUnitario.multiply(BigDecimal.valueOf(cantidad));
     }
 

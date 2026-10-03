@@ -1,6 +1,7 @@
 package com.padel.rankpadel.service;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -16,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.padel.rankpadel.dto.request.VentaRequest;
 import com.padel.rankpadel.dto.response.VentaResponse;
 import com.padel.rankpadel.entity.Cliente;
+import com.padel.rankpadel.entity.ConfiguracionSede;
 import com.padel.rankpadel.entity.PresentacionProducto;
 import com.padel.rankpadel.entity.Producto;
 import com.padel.rankpadel.entity.Reserva;
@@ -27,6 +29,7 @@ import com.padel.rankpadel.exception.EstadoInvalidoException;
 import com.padel.rankpadel.exception.ResourceNotFoundException;
 import com.padel.rankpadel.repository.ClienteRepository;
 import com.padel.rankpadel.repository.CobroRepository;
+import com.padel.rankpadel.repository.ConfiguracionSedeRepository;
 import com.padel.rankpadel.repository.PresentacionProductoRepository;
 import com.padel.rankpadel.repository.ReservaRepository;
 import com.padel.rankpadel.repository.VentaRepository;
@@ -53,6 +56,7 @@ public class VentaService {
     private final CajaCerradaGuard cajaCerradaGuard;
     private final PresentacionProductoRepository presentacionProductoRepository;
     private final DisponibilidadCanchaService disponibilidadCanchaService;
+    private final ConfiguracionSedeRepository configuracionSedeRepository;
 
     @Transactional
     public VentaResponse registrar(VentaRequest request) {
@@ -147,7 +151,10 @@ public class VentaService {
             total = total.add(item.subtotal());
         }
 
-        venta.setTotal(total);
+        BigDecimal descuento = repartirDescuento(venta.getItems(), total, request);
+        venta.setDescuento(descuento);
+        venta.setMotivoDescuento(descuento.signum() > 0 ? request.getMotivoDescuento() : null);
+        venta.setTotal(total.subtract(descuento));
         ventaRepository.save(venta);
 
         for (VentaItem item : venta.getItems()) {
@@ -155,6 +162,76 @@ public class VentaService {
                     MotivoMovimientoStock.VENTA, venta, null, null);
         }
         return aResponse(venta);
+    }
+
+    /**
+     * Reparte el descuento de la venta entre sus renglones y devuelve lo descontado.
+     *
+     * <p>La persona lo piensa sobre el total —"quedate con cinco mil"— pero se guarda por
+     * renglón, porque el invariante que importa es que {@code venta.total} sea la suma de
+     * sus renglones. Un descuento suelto en la cabecera lo rompe: el ranking de productos
+     * suma renglones y la facturación del mes suma totales, y los dos números dejarían de
+     * cerrar.
+     *
+     * <p>Se reparte en proporción a lo que vale cada renglón y el resto del redondeo va al
+     * más caro, así la suma da exacta hasta el peso. Repartirlo en partes iguales le haría
+     * perder más margen al producto barato, que es al revés de lo que el club quiere.
+     */
+    private BigDecimal repartirDescuento(List<VentaItem> items, BigDecimal bruto,
+            VentaRequest request) {
+        BigDecimal descuento = request.getDescuento();
+        if (descuento == null || descuento.signum() == 0) {
+            return BigDecimal.ZERO;
+        }
+        if (descuento.signum() < 0) {
+            throw new EstadoInvalidoException("El descuento no puede ser negativo.");
+        }
+        if (descuento.compareTo(bruto) > 0) {
+            throw new EstadoInvalidoException("El descuento no puede ser mayor que la venta ("
+                    + bruto + ").");
+        }
+        // Sin motivo, un margen flojo tres meses después no se puede explicar, y la
+        // bonificación es justamente lo que hay que poder revisar.
+        if (request.getMotivoDescuento() == null || request.getMotivoDescuento().isBlank()) {
+            throw new EstadoInvalidoException("Decí por qué se bonifica.");
+        }
+        exigirDentroDelTope(descuento, bruto);
+
+        BigDecimal repartido = BigDecimal.ZERO;
+        VentaItem masCaro = items.get(0);
+        for (VentaItem item : items) {
+            if (item.bruto().compareTo(masCaro.bruto()) > 0) {
+                masCaro = item;
+            }
+            BigDecimal parte = descuento.multiply(item.bruto())
+                    .divide(bruto, 2, RoundingMode.HALF_UP);
+            item.setDescuento(parte);
+            repartido = repartido.add(parte);
+        }
+        masCaro.setDescuento(masCaro.getDescuento().add(descuento.subtract(repartido)));
+        return descuento;
+    }
+
+    /**
+     * El mostrador bonifica hasta donde el dueño lo dejó. Sin configurar es cero: el club
+     * que no decidió dar esa atribución no la dio, y arrancar permitiendo sería decidir
+     * por él. El dueño no tiene tope.
+     */
+    private void exigirDentroDelTope(BigDecimal descuento, BigDecimal bruto) {
+        if (UsuarioActual.esDuenio()) {
+            return;
+        }
+        Integer tope = configuracionSedeRepository.findById(1L)
+                .map(ConfiguracionSede::getDescuentoMaximoMostrador)
+                .orElse(0);
+        int maximo = tope != null ? tope : 0;
+        BigDecimal permitido = bruto.multiply(BigDecimal.valueOf(maximo))
+                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+        if (descuento.compareTo(permitido) > 0) {
+            throw new EstadoInvalidoException(maximo == 0
+                    ? "Los descuentos los autoriza el dueño."
+                    : "Podés bonificar hasta el " + maximo + "%. Para más, lo autoriza el dueño.");
+        }
     }
 
     /** Producto + presentación: lo que define un renglón de la venta. */
@@ -299,6 +376,7 @@ public class VentaService {
                         .factor(item.getFactor())
                         .cantidad(item.getCantidad())
                         .precioUnitario(item.getPrecioUnitario())
+                        .descuento(item.getDescuento())
                         .subtotal(item.subtotal())
                         .build())
                 .toList();
@@ -308,6 +386,8 @@ public class VentaService {
                 .id(venta.getId())
                 .fecha(venta.getFecha())
                 .total(venta.getTotal())
+                .descuento(venta.getDescuento())
+                .motivoDescuento(venta.getMotivoDescuento())
                 .medio(venta.getMedio() != null ? venta.getMedio().name() : null)
                 .clienteId(cliente != null ? cliente.getId() : null)
                 .clienteNombre(cliente != null ? cliente.getNombre() : null)

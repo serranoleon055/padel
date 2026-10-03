@@ -63,6 +63,14 @@ public class MovimientoStock {
     @JoinColumn(name = "documento_compra_id")
     private DocumentoCompra documentoCompra;
 
+    /**
+     * El conteo físico del que salió este ajuste. Sin esto, un "AJUSTE de -3" suelto es
+     * justo el faltante sin explicación que el kardex existe para evitar.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "recuento_id")
+    private Recuento recuento;
+
     /** Cuánto costó la unidad en esta compra. */
     private BigDecimal costoUnitario;
 

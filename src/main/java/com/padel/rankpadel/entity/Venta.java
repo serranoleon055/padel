@@ -52,7 +52,18 @@ public class Venta {
      */
     private LocalDate jornada;
 
+    /** Lo que se cobra: la suma de los renglones, ya con sus descuentos aplicados. */
     private BigDecimal total;
+
+    /**
+     * La suma de lo bonificado en los renglones. Es derivado: se guarda para poder
+     * preguntar cuánto se bonificó en el mes sin recorrer renglón por renglón.
+     */
+    @Builder.Default
+    private BigDecimal descuento = BigDecimal.ZERO;
+
+    /** Por qué se bonificó. Lo que después explica un margen flojo. */
+    private String motivoDescuento;
 
     @Enumerated(EnumType.STRING)
     private MedioPago medio;

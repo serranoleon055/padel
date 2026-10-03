@@ -136,6 +136,10 @@ public class SecurityConfig {
                         .requestMatchers("/api/proveedores/**").hasRole("DUENIO")
                         // Las compras son plata que sale del club: las carga el dueño.
                         .requestMatchers("/api/compras/**").hasRole("DUENIO")
+                        // Aplicar un conteo da de baja mercadería sin que nadie la haya
+                        // vendido: es la forma más limpia de tapar un faltante. Mismo
+                        // criterio que el ajuste de stock, que ya es solo del dueño.
+                        .requestMatchers("/api/recuentos/**").hasRole("DUENIO")
                         .requestMatchers(HttpMethod.DELETE, "/api/torneos/**").hasRole("DUENIO")
                         .requestMatchers(HttpMethod.PUT, "/api/configuracion-sede").hasRole("DUENIO")
                         .requestMatchers(HttpMethod.POST, "/api/configuracion-sede/**").hasRole("DUENIO")

@@ -1,7 +1,10 @@
 package com.padel.rankpadel.controller;
 
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.List;
 
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -20,6 +23,7 @@ import com.padel.rankpadel.dto.request.MovimientoStockRequest;
 import com.padel.rankpadel.dto.request.PresentacionRequest;
 import com.padel.rankpadel.dto.request.ProductoRequest;
 import com.padel.rankpadel.dto.response.MovimientoStockResponse;
+import com.padel.rankpadel.dto.response.PagedResponse;
 import com.padel.rankpadel.dto.response.PresentacionResponse;
 import com.padel.rankpadel.dto.response.ProductoResponse;
 import com.padel.rankpadel.service.PresentacionProductoService;
@@ -69,9 +73,22 @@ public class ProductoController {
         return ResponseEntity.noContent().build();
     }
 
+    @Operation(summary = "Kardex del producto",
+            description = "Requiere JWT de admin. Entradas y salidas con las unidades que quedaban después de cada una. El rango de fechas acota lo que se lista, no el saldo.")
     @GetMapping("/{id}/movimientos")
-    public ResponseEntity<List<MovimientoStockResponse>> movimientos(@PathVariable Long id) {
-        return ResponseEntity.ok(productoService.movimientos(id));
+    public ResponseEntity<PagedResponse<MovimientoStockResponse>> movimientos(
+            @PathVariable Long id,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta,
+            @RequestParam(defaultValue = "0") int pagina,
+            @RequestParam(defaultValue = "25") int tamanio) {
+        // `hasta` se recibe como día y se extiende al final de ese día: pedir "hasta el 15"
+        // y que no aparezca nada del 15 porque los movimientos tienen hora es un error que
+        // el que mira el kardex no tiene por qué deducir.
+        return ResponseEntity.ok(productoService.movimientos(id,
+                desde != null ? desde.atStartOfDay() : null,
+                hasta != null ? hasta.atTime(LocalTime.MAX) : null,
+                pagina, tamanio));
     }
 
     /** Historial de compras de todo el club, no de un producto. */

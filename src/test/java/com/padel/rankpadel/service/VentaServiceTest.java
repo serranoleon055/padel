@@ -62,6 +62,8 @@ class VentaServiceTest {
     private DisponibilidadCanchaService disponibilidadCanchaService;
     @Mock
     private PresentacionProductoRepository presentacionProductoRepository;
+    @Mock
+    private com.padel.rankpadel.repository.ConfiguracionSedeRepository configuracionSedeRepository;
 
     @InjectMocks
     private VentaService ventaService;
@@ -497,6 +499,205 @@ class VentaServiceTest {
             assertThatThrownBy(() -> ventaService.anular(99L, null, false))
                     .isInstanceOf(com.padel.rankpadel.exception.ResourceNotFoundException.class);
             verify(productoService, never()).aplicarMovimiento(any(), anyInt(), any(), any(), any(), any());
+        }
+    }
+
+    @Nested
+    @DisplayName("Descuentos")
+    class Descuentos {
+
+        @org.junit.jupiter.api.AfterEach
+        void limpiarContexto() {
+            org.springframework.security.core.context.SecurityContextHolder.clearContext();
+        }
+
+        private void entrarComo(String... roles) {
+            org.springframework.security.core.context.SecurityContextHolder.getContext()
+                    .setAuthentication(new org.springframework.security.authentication
+                            .UsernamePasswordAuthenticationToken("quien", null,
+                            java.util.Arrays.stream(roles)
+                                    .map(org.springframework.security.core.authority.SimpleGrantedAuthority::new)
+                                    .toList()));
+        }
+
+        private VentaRequest conDescuento(VentaRequest request, String descuento, String motivo) {
+            request.setDescuento(new BigDecimal(descuento));
+            request.setMotivoDescuento(motivo);
+            return request;
+        }
+
+        private Venta guardada() {
+            ArgumentCaptor<Venta> captor = ArgumentCaptor.forClass(Venta.class);
+            verify(ventaRepository).save(captor.capture());
+            return captor.getValue();
+        }
+
+        @Test
+        @DisplayName("El total es la lista menos lo bonificado")
+        void descuento_bajaElTotal() {
+            // Hasta acá el precio de lista era el único posible, así que el "te lo dejo en
+            // cinco mil" se resolvía cobrando de menos por fuera y la caja daba faltante.
+            entrarComo("ROLE_ADMIN", "ROLE_DUENIO");
+            Producto gaseosa = producto(1L, "Gaseosa", "2500", "1500", 20);
+            when(productoService.buscar(1L)).thenReturn(gaseosa);
+
+            VentaResponse respuesta = ventaService.registrar(
+                    conDescuento(pedido(MedioPago.EFECTIVO, 1L, 4), "1000", "cliente de siempre"));
+
+            assertThat(respuesta.getTotal()).isEqualByComparingTo("9000");
+            assertThat(respuesta.getDescuento()).isEqualByComparingTo("1000");
+            assertThat(respuesta.getMotivoDescuento()).isEqualTo("cliente de siempre");
+        }
+
+        @Test
+        @DisplayName("Se reparte entre los renglones y la suma da exacta")
+        void descuento_seProrratea() {
+            // El invariante que importa es que el total sea la suma de los renglones: el
+            // ranking de productos suma renglones y la facturación suma totales, y con un
+            // descuento suelto en la cabecera los dos números dejarían de cerrar.
+            entrarComo("ROLE_ADMIN", "ROLE_DUENIO");
+            Producto gaseosa = producto(1L, "Gaseosa", "1000", "600", 20);
+            Producto pelotas = producto(2L, "Pelotas", "9000", "6000", 20);
+            when(productoService.buscar(1L)).thenReturn(gaseosa);
+            when(productoService.buscar(2L)).thenReturn(pelotas);
+
+            VentaRequest.Item uno = new VentaRequest.Item();
+            uno.setProductoId(1L);
+            uno.setCantidad(1);
+            VentaRequest.Item dos = new VentaRequest.Item();
+            dos.setProductoId(2L);
+            dos.setCantidad(1);
+            VentaRequest request = new VentaRequest();
+            request.setMedio(MedioPago.EFECTIVO);
+            request.setItems(List.of(uno, dos));
+
+            // 1.000 sobre 10.000: 100 a la gaseosa y 900 a las pelotas.
+            ventaService.registrar(conDescuento(request, "1000", "promo"));
+
+            Venta venta = guardada();
+            assertThat(venta.getItems()).extracting(VentaItem::getDescuento)
+                    .usingComparatorForType(BigDecimal::compareTo, BigDecimal.class)
+                    .containsExactly(new BigDecimal("100.00"), new BigDecimal("900.00"));
+            assertThat(venta.getItems().stream().map(VentaItem::subtotal)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add))
+                    .isEqualByComparingTo(venta.getTotal());
+        }
+
+        @Test
+        @DisplayName("El resto del redondeo va al renglón más caro, y el total cierra")
+        void descuento_elRestoVaAlMasCaro() {
+            // 10 sobre tres renglones no se parte en tercios exactos. Si cada parte se
+            // redondea sola, la suma de los renglones no da el total de la venta.
+            entrarComo("ROLE_ADMIN", "ROLE_DUENIO");
+            Producto barato = producto(1L, "Barato", "100", null, 50);
+            Producto medio = producto(2L, "Medio", "100", null, 50);
+            Producto caro = producto(3L, "Caro", "100", null, 50);
+            when(productoService.buscar(1L)).thenReturn(barato);
+            when(productoService.buscar(2L)).thenReturn(medio);
+            when(productoService.buscar(3L)).thenReturn(caro);
+
+            VentaRequest request = new VentaRequest();
+            request.setMedio(MedioPago.EFECTIVO);
+            request.setItems(List.of(item(1L, 1), item(2L, 1), item(3L, 1)));
+
+            ventaService.registrar(conDescuento(request, "10", "redondeo"));
+
+            Venta venta = guardada();
+            assertThat(venta.getItems().stream().map(VentaItem::getDescuento)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add)).isEqualByComparingTo("10");
+            assertThat(venta.getTotal()).isEqualByComparingTo("290");
+        }
+
+        private VentaRequest.Item item(Long productoId, int cantidad) {
+            VentaRequest.Item item = new VentaRequest.Item();
+            item.setProductoId(productoId);
+            item.setCantidad(cantidad);
+            return item;
+        }
+
+        @Test
+        @DisplayName("Sin motivo no se bonifica")
+        void descuento_sinMotivo_rechaza() {
+            // Un margen flojo tres meses después no se puede explicar sin esto.
+            entrarComo("ROLE_ADMIN", "ROLE_DUENIO");
+            when(productoService.buscar(1L)).thenReturn(producto(1L, "Gaseosa", "2500", "1500", 20));
+
+            assertThatThrownBy(() -> ventaService.registrar(
+                    conDescuento(pedido(MedioPago.EFECTIVO, 1L, 1), "500", "  ")))
+                    .isInstanceOf(EstadoInvalidoException.class)
+                    .hasMessageContaining("por qué se bonifica");
+            verify(ventaRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("No se puede descontar más de lo que vale la venta")
+        void descuento_mayorQueElTotal_rechaza() {
+            entrarComo("ROLE_ADMIN", "ROLE_DUENIO");
+            when(productoService.buscar(1L)).thenReturn(producto(1L, "Gaseosa", "2500", "1500", 20));
+
+            assertThatThrownBy(() -> ventaService.registrar(
+                    conDescuento(pedido(MedioPago.EFECTIVO, 1L, 1), "3000", "regalo")))
+                    .isInstanceOf(EstadoInvalidoException.class)
+                    .hasMessageContaining("no puede ser mayor");
+        }
+
+        @Test
+        @DisplayName("Sin tope configurado, el empleado no puede bonificar")
+        void descuento_mostradorSinTope_rechaza() {
+            // Arrancar permitiendo sería decidir por el club una atribución que no dio.
+            entrarComo("ROLE_ADMIN");
+            when(productoService.buscar(1L)).thenReturn(producto(1L, "Gaseosa", "2500", "1500", 20));
+            when(configuracionSedeRepository.findById(1L)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> ventaService.registrar(
+                    conDescuento(pedido(MedioPago.EFECTIVO, 1L, 1), "100", "promo")))
+                    .isInstanceOf(EstadoInvalidoException.class)
+                    .hasMessageContaining("autoriza el dueño");
+        }
+
+        @Test
+        @DisplayName("El empleado bonifica hasta el tope y no más")
+        void descuento_mostradorConTope() {
+            entrarComo("ROLE_ADMIN");
+            when(productoService.buscar(1L)).thenReturn(producto(1L, "Gaseosa", "1000", "600", 20));
+            when(configuracionSedeRepository.findById(1L)).thenReturn(Optional.of(
+                    com.padel.rankpadel.entity.ConfiguracionSede.builder()
+                            .descuentoMaximoMostrador(10).build()));
+
+            // 10% de 10.000 es 1.000: justo en el tope entra.
+            assertThat(ventaService.registrar(
+                    conDescuento(pedido(MedioPago.EFECTIVO, 1L, 10), "1000", "promo")).getTotal())
+                    .isEqualByComparingTo("9000");
+
+            assertThatThrownBy(() -> ventaService.registrar(
+                    conDescuento(pedido(MedioPago.EFECTIVO, 1L, 10), "1001", "promo")))
+                    .isInstanceOf(EstadoInvalidoException.class)
+                    .hasMessageContaining("hasta el 10%");
+        }
+
+        @Test
+        @DisplayName("El dueño no tiene tope")
+        void descuento_duenioSinTope() {
+            entrarComo("ROLE_ADMIN", "ROLE_DUENIO");
+            when(productoService.buscar(1L)).thenReturn(producto(1L, "Gaseosa", "1000", "600", 20));
+
+            assertThat(ventaService.registrar(
+                    conDescuento(pedido(MedioPago.EFECTIVO, 1L, 10), "9000", "cortesía")).getTotal())
+                    .isEqualByComparingTo("1000");
+            verify(configuracionSedeRepository, never()).findById(any());
+        }
+
+        @Test
+        @DisplayName("Una venta sin descuento no cambia en nada")
+        void sinDescuento_todoIgual() {
+            entrarComo("ROLE_ADMIN", "ROLE_DUENIO");
+            when(productoService.buscar(1L)).thenReturn(producto(1L, "Gaseosa", "2500", "1500", 20));
+
+            VentaResponse respuesta = ventaService.registrar(pedido(MedioPago.EFECTIVO, 1L, 2));
+
+            assertThat(respuesta.getTotal()).isEqualByComparingTo("5000");
+            assertThat(respuesta.getDescuento()).isEqualByComparingTo("0");
+            assertThat(respuesta.getMotivoDescuento()).isNull();
         }
     }
 }

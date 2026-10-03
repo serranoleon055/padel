@@ -4,11 +4,13 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,11 +19,13 @@ import com.padel.rankpadel.dto.request.GastoRequest;
 import com.padel.rankpadel.dto.request.MovimientoStockRequest;
 import com.padel.rankpadel.dto.request.ProductoRequest;
 import com.padel.rankpadel.dto.response.MovimientoStockResponse;
+import com.padel.rankpadel.dto.response.PagedResponse;
 import com.padel.rankpadel.dto.response.PresentacionResponse;
 import com.padel.rankpadel.dto.response.ProductoResponse;
 import com.padel.rankpadel.entity.DocumentoCompra;
 import com.padel.rankpadel.entity.MovimientoStock;
 import com.padel.rankpadel.entity.Producto;
+import com.padel.rankpadel.entity.Recuento;
 import com.padel.rankpadel.entity.Proveedor;
 import com.padel.rankpadel.enums.CategoriaGasto;
 import com.padel.rankpadel.enums.MotivoMovimientoStock;
@@ -44,7 +48,6 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class ProductoService {
 
-    private static final int MOVIMIENTOS_EN_LA_FICHA = 40;
     private static final int COMPRAS_EN_EL_HISTORIAL = 100;
 
     private final ProductoRepository productoRepository;
@@ -307,12 +310,52 @@ public class ProductoService {
                 null, notas, LocalDateTime.now(), compra);
     }
 
+    /**
+     * El kardex del producto: qué entró y qué salió, con las unidades que quedaban después
+     * de cada movimiento.
+     *
+     * <p>Antes devolvía los últimos 40 y nada más. Con un tope duro, un faltante de hace
+     * dos meses era inalcanzable desde la pantalla, que es justo cuando hace falta mirar:
+     * el stock de hoy no se discute, se cuenta.
+     *
+     * <p>El saldo se pide a la base para la fila más vieja de la página y se acumula hacia
+     * arriba sobre ella. Es una consulta por página, no una por fila, y sale igual en la
+     * página 1 que en la 12.
+     */
     @Transactional(readOnly = true)
-    public List<MovimientoStockResponse> movimientos(Long productoId) {
-        return movimientoStockRepository
-                .findDelProducto(productoId, PageRequest.of(0, MOVIMIENTOS_EN_LA_FICHA)).stream()
-                .map(this::aResponse)
-                .toList();
+    public PagedResponse<MovimientoStockResponse> movimientos(Long productoId,
+            LocalDateTime desde, LocalDateTime hasta, int pagina, int tamanio) {
+        Page<MovimientoStock> page = movimientoStockRepository.findDelProducto(
+                productoId, desde, hasta, PageRequest.of(pagina, tamanio));
+
+        List<MovimientoStock> movimientos = page.getContent();
+        List<MovimientoStockResponse> contenido = new ArrayList<>(movimientos.size());
+        if (!movimientos.isEmpty()) {
+            // La página viene del más nuevo al más viejo: el saldo se arma al revés, desde
+            // el último renglón, que es el único cuyo acumulado conoce la base.
+            MovimientoStock masViejo = movimientos.get(movimientos.size() - 1);
+            int saldo = movimientoStockRepository.saldoHasta(
+                    productoId, masViejo.getFecha(), masViejo.getId()) - masViejo.getCantidad();
+
+            MovimientoStockResponse[] filas = new MovimientoStockResponse[movimientos.size()];
+            for (int i = movimientos.size() - 1; i >= 0; i--) {
+                MovimientoStock movimiento = movimientos.get(i);
+                saldo += movimiento.getCantidad();
+                filas[i] = aResponse(movimiento);
+                filas[i].setSaldo(saldo);
+            }
+            contenido = List.of(filas);
+        }
+
+        return PagedResponse.<MovimientoStockResponse>builder()
+                .contenido(contenido)
+                .pagina(pagina)
+                .tamanio(tamanio)
+                .totalElementos(page.getTotalElements())
+                .totalPaginas(page.getTotalPages())
+                .esPrimera(page.isFirst())
+                .esUltima(page.isLast())
+                .build();
     }
 
     /** Historial de compras del club: qué entró, cuándo, de quién y a cuánto. */
@@ -351,6 +394,26 @@ public class ProductoService {
     public void aplicarMovimiento(Producto producto, int cantidad, MotivoMovimientoStock motivo,
             com.padel.rankpadel.entity.Venta venta, BigDecimal costoUnitario, String notas,
             LocalDateTime cuando, DocumentoCompra compra) {
+        registrar(producto, cantidad, motivo, venta, costoUnitario, notas, cuando, compra, null);
+    }
+
+    /**
+     * El ajuste que sale de contar el depósito. Pasa por el mismo lugar que todo lo demás:
+     * el stock tiene que seguir siendo la suma de sus movimientos.
+     *
+     * @param cantidad la DIFERENCIA contra lo que decía el sistema cuando se armó la
+     *                 planilla, no el total contado
+     */
+    @Transactional
+    public void aplicarDeRecuento(Producto producto, int cantidad, Recuento recuento,
+            BigDecimal costoUnitario, String notas) {
+        registrar(producto, cantidad, MotivoMovimientoStock.RECUENTO, null, costoUnitario,
+                notas, LocalDateTime.now(), null, recuento);
+    }
+
+    private void registrar(Producto producto, int cantidad, MotivoMovimientoStock motivo,
+            com.padel.rankpadel.entity.Venta venta, BigDecimal costoUnitario, String notas,
+            LocalDateTime cuando, DocumentoCompra compra, Recuento recuento) {
         if (!producto.isControlaStock()) {
             return;
         }
@@ -364,6 +427,7 @@ public class ProductoService {
                 .fecha(cuando)
                 .venta(venta)
                 .documentoCompra(compra)
+                .recuento(recuento)
                 .costoUnitario(costoUnitario)
                 .registradoPor(UsuarioActual.nombre())
                 .notas(notas)

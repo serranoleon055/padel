@@ -1,10 +1,12 @@
 package com.padel.rankpadel.dto.request;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 import com.padel.rankpadel.enums.MedioPago;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
@@ -33,6 +35,22 @@ public class VentaRequest {
 
     /** Opcional: sumar la consumición a un turno. */
     private Long reservaId;
+
+    /**
+     * Lo que se bonifica sobre el total, en plata.
+     *
+     * <p>Es un importe y no un porcentaje porque el mostrador redondea ("quedate con cinco
+     * mil"), no calcula. La pantalla puede ofrecer el porcentaje; lo que viaja y se guarda
+     * es la plata, así ningún redondeo hace que el total no dé.
+     *
+     * <p>Se reparte entre los renglones al cargar la venta.
+     */
+    @DecimalMin(value = "0.00", message = "El descuento no puede ser negativo")
+    private BigDecimal descuento;
+
+    /** Obligatorio si hay descuento: es lo que después explica un margen flojo. */
+    @Size(max = 200)
+    private String motivoDescuento;
 
     @Size(max = 300)
     private String notas;

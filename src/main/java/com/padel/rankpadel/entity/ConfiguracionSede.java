@@ -33,6 +33,16 @@ public class ConfiguracionSede {
     private Integer cancelacionHorasMinimas = 12;
 
     /**
+     * Hasta qué porcentaje de la venta puede bonificar el mostrador sin el dueño.
+     *
+     * <p>En 0 (el default) no puede descontar nada: el club que no lo configuró no decidió
+     * dar esa atribución, y arrancar permitiendo sería decidir por él. El dueño nunca
+     * tiene tope.
+     */
+    @Builder.Default
+    private Integer descuentoMaximoMostrador = 0;
+
+    /**
      * El cambio que el club deja en el cajón para dar vuelto. Es solo la propuesta del
      * formulario de apertura: lo que entra al arqueo es el monto que se declara al abrir,
      * no este número.

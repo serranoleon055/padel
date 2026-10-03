@@ -16,5 +16,7 @@ public enum MotivoMovimientoStock {
     /** Salió del stock porque se anuló la compra que lo había traído. */
     ANULACION_COMPRA,
     /** Se rompió, se venció o se perdió. */
-    MERMA
+    MERMA,
+    /** Diferencia que salió de contar el depósito. */
+    RECUENTO
 }

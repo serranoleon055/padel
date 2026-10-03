@@ -80,6 +80,13 @@ class SeguridadEndpointsTest {
                 new Caso(HttpMethod.DELETE, "/api/compras/1"),
                 new Caso(HttpMethod.GET, "/api/proveedores/1/cuenta"),
                 new Caso(HttpMethod.POST, "/api/proveedores/1/pagos"),
+                // Aplicar un conteo da de baja mercadería sin que nadie la haya vendido.
+                new Caso(HttpMethod.POST, "/api/recuentos"),
+                new Caso(HttpMethod.GET, "/api/recuentos"),
+                new Caso(HttpMethod.GET, "/api/recuentos/en-curso"),
+                new Caso(HttpMethod.PUT, "/api/recuentos/1/conteo"),
+                new Caso(HttpMethod.POST, "/api/recuentos/1/aplicar"),
+                new Caso(HttpMethod.DELETE, "/api/recuentos/1"),
                 new Caso(HttpMethod.DELETE, "/api/torneos/1"),
                 new Caso(HttpMethod.PUT, "/api/configuracion-sede"),
                 new Caso(HttpMethod.POST, "/api/promociones-cancha"),

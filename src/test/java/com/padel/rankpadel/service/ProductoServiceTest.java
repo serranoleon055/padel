@@ -12,6 +12,8 @@ import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 import org.junit.jupiter.api.DisplayName;
@@ -22,10 +24,13 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 
 import com.padel.rankpadel.dto.request.GastoRequest;
 import com.padel.rankpadel.dto.request.MovimientoStockRequest;
 import com.padel.rankpadel.dto.request.ProductoRequest;
+import com.padel.rankpadel.dto.response.MovimientoStockResponse;
 import com.padel.rankpadel.dto.response.ProductoResponse;
 import com.padel.rankpadel.entity.MovimientoStock;
 import com.padel.rankpadel.entity.Producto;
@@ -377,6 +382,64 @@ class ProductoServiceTest {
             Producto alquiler = pelotas(0);
             alquiler.setControlaStock(false);
             assertThat(alquiler.necesitaReposicion()).isFalse();
+        }
+    }
+
+    @Nested
+    @DisplayName("Kardex")
+    class Kardex {
+
+        private MovimientoStock movimiento(Long id, int cantidad, int minutos) {
+            return MovimientoStock.builder()
+                    .id(id).producto(pelotas(0)).cantidad(cantidad)
+                    .motivo(MotivoMovimientoStock.VENTA)
+                    .fecha(LocalDateTime.of(2026, 10, 2, 20, 0).plusMinutes(minutos))
+                    .build();
+        }
+
+        @Test
+        @DisplayName("El saldo de cada fila son las unidades que quedaban después")
+        void movimientos_acumulaElSaldo() {
+            // La página viene del más nuevo al más viejo y la base solo sabe el acumulado
+            // del más viejo: el resto se arma sobre ese. Entraron 12, salieron 2 y salió 1,
+            // así que la fila más nueva tiene que decir 9.
+            List<MovimientoStock> pagina = List.of(
+                    movimiento(3L, -1, 20), movimiento(2L, -2, 10), movimiento(1L, 12, 0));
+            when(movimientoStockRepository.findDelProducto(eq(1L), any(), any(), any()))
+                    .thenReturn(new PageImpl<>(pagina, PageRequest.of(0, 25), 3));
+            when(movimientoStockRepository.saldoHasta(eq(1L), any(), eq(1L))).thenReturn(12);
+
+            var respuesta = productoService.movimientos(1L, null, null, 0, 25);
+
+            assertThat(respuesta.getContenido()).extracting(MovimientoStockResponse::getSaldo)
+                    .containsExactly(9, 10, 12);
+            assertThat(respuesta.getTotalElementos()).isEqualTo(3);
+        }
+
+        @Test
+        @DisplayName("En la página 2 el saldo arranca donde lo dejó la base, no en cero")
+        void movimientos_saldoDeUnaPaginaDelMedio() {
+            // El acumulado de la fila más vieja de la página lo da la base; si se arrancara
+            // en cero, el kardex diría que el depósito estaba vacío en cada página nueva.
+            List<MovimientoStock> pagina = List.of(movimiento(9L, -4, 50), movimiento(8L, -6, 40));
+            when(movimientoStockRepository.findDelProducto(eq(1L), any(), any(), any()))
+                    .thenReturn(new PageImpl<>(pagina, PageRequest.of(1, 2), 10));
+            when(movimientoStockRepository.saldoHasta(eq(1L), any(), eq(8L))).thenReturn(30);
+
+            var respuesta = productoService.movimientos(1L, null, null, 1, 2);
+
+            assertThat(respuesta.getContenido()).extracting(MovimientoStockResponse::getSaldo)
+                    .containsExactly(26, 30);
+        }
+
+        @Test
+        @DisplayName("Sin movimientos no se le pregunta el saldo a la base")
+        void movimientos_vacio() {
+            when(movimientoStockRepository.findDelProducto(eq(1L), any(), any(), any()))
+                    .thenReturn(new PageImpl<>(List.of(), PageRequest.of(0, 25), 0));
+
+            assertThat(productoService.movimientos(1L, null, null, 0, 25).getContenido()).isEmpty();
+            verify(movimientoStockRepository, never()).saldoHasta(any(), any(), any());
         }
     }
 }

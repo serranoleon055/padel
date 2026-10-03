@@ -51,6 +51,12 @@ public class ConfiguracionSedeService {
             configuracion.setCancelacionHorasMinimas(Math.max(0, dto.getCancelacionHorasMinimas()));
         }
         configuracion.setFondoFijo(dto.getFondoFijo());
+        if (dto.getDescuentoMaximoMostrador() != null) {
+            // Entre 0 y 100: un tope de 150% no significa nada y uno negativo prohibiría
+            // más que el cero, que ya es "ninguno".
+            configuracion.setDescuentoMaximoMostrador(
+                    Math.clamp(dto.getDescuentoMaximoMostrador(), 0, 100));
+        }
         configuracion.setHorariosJson(aJson(dto.getHorarios()));
         configuracion.setGaleriaJson(aJson(dto.getGaleria()));
         configuracion.setFormasPagoJson(aJson(dto.getFormasPago()));
@@ -72,6 +78,10 @@ public class ConfiguracionSedeService {
                 .mapsEmbedUrl(configuracion.getMapsEmbedUrl())
                 .cancelacionHorasMinimas(horasMinimasCancelacion(configuracion))
                 .fondoFijo(configuracion.getFondoFijo())
+                // Null solo existe en una fila vieja que nunca se guardó desde que existe
+                // la columna; para la pantalla es cero, que es "no puede bonificar".
+                .descuentoMaximoMostrador(configuracion.getDescuentoMaximoMostrador() != null
+                        ? configuracion.getDescuentoMaximoMostrador() : 0)
                 .horarios(desdeJson(configuracion.getHorariosJson(), new TypeReference<List<ConfiguracionSedeDto.HorarioSede>>() {}))
                 .galeria(desdeJson(configuracion.getGaleriaJson(), new TypeReference<List<ConfiguracionSedeDto.FotoSede>>() {}))
                 .formasPago(desdeJson(configuracion.getFormasPagoJson(), new TypeReference<List<String>>() {}))

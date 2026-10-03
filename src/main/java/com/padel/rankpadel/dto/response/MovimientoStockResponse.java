@@ -23,6 +23,15 @@ public class MovimientoStockResponse {
     /** Negativo cuando salió mercadería, positivo cuando entró. */
     private int cantidad;
 
+    /**
+     * Unidades que quedaban después de este movimiento.
+     *
+     * <p>Es lo que convierte la lista en un kardex: sin el saldo, una fila de "-3" no dice
+     * si quedaron veinte o si se vendió lo último. Viaja en cero en el historial de compras
+     * de todo el club, donde no significa nada: ahí cada fila es de otro producto.
+     */
+    private int saldo;
+
     private String motivo;
     private LocalDateTime fecha;
     private BigDecimal costoUnitario;
