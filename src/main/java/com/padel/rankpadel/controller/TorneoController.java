@@ -266,7 +266,7 @@ public class TorneoController {
                 return ResponseEntity.ok(torneoService.reaplicarPlantillaPuntos(id, categoriaId, plantillaPuntosId));
         }
 
-        @Operation(summary = "Cargar resultado de partido", description = "Requiere JWT. Formato del marcador: sets separados por espacio, cada set con guión. Ej: `6-3 6-4` o `6-3 3-6 7-5`.")
+        @Operation(summary = "Cargar resultado de partido", description = "Requiere JWT. Formato del marcador: sets separados por barra, cada set con guión. Ej: `6-3 / 6-4` o `6-3 / 3-6 / 7-5`.")
         @ApiResponses({
                         @ApiResponse(responseCode = "200", description = "Resultado cargado exitosamente", content = @Content(schema = @Schema(implementation = PartidoResponse.class))),
                         @ApiResponse(responseCode = "400", description = "Marcador inválido o partido no pertenece al torneo", content = @Content),
