@@ -25,19 +25,26 @@ jobs:
   backup:
     runs-on: ubuntu-latest
     steps:
-      - name: Verificar secrets
+      # Mientras no haya un cliente en produccion no hay base que respaldar: sin los
+      # secrets el backup se saltea con un aviso en vez de fallar (y mandar un mail) cada dia.
+      - name: Verificar que haya una base configurada
+        id: config
         env:
           DB_HOST: ${{ secrets.DB_HOST }}
         run: |
           if [ -z "$DB_HOST" ]; then
-            echo "::error::Faltan los secrets de backup (DB_HOST, etc.). Ver comentario del workflow."
-            exit 1
+            echo "::notice::Backup omitido: todavia no hay una base de produccion configurada (faltan los secrets)."
+            echo "listo=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "listo=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Instalar cliente MySQL
+        if: steps.config.outputs.listo == 'true'
         run: sudo apt-get update -qq && sudo apt-get install -y -qq mysql-client
 
       - name: Dump + gzip
+        if: steps.config.outputs.listo == 'true'
         env:
           DB_HOST: ${{ secrets.DB_HOST }}
           DB_PORT: ${{ secrets.DB_PORT }}
@@ -55,6 +62,7 @@ jobs:
           [ "$(stat -c%s rankpadel-$FECHA.sql.gz)" -gt 1024 ] || { echo "::error::Dump demasiado chico"; exit 1; }
 
       - name: Subir al bucket
+        if: steps.config.outputs.listo == 'true'
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
@@ -67,6 +75,7 @@ jobs:
             --endpoint-url "$S3_ENDPOINT"
 
       - name: Borrar backups de más de 30 días
+        if: steps.config.outputs.listo == 'true'
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
