@@ -38,6 +38,7 @@ public class ParejaService {
     private final CategoriaRepository categoriaRepository;
     private final PartidoRepository partidoRepository;
     private final ResultadoService resultadoService;
+    private final CobroInscripcionService cobroInscripcionService;
 
     @Transactional
     public ParejaResponse inscribir(Long torneoId, ParejaRequest request) {
@@ -95,6 +96,7 @@ public class ParejaService {
         }
 
         Pareja pareja = parejaMapper.requestToPareja(request, jugador1, jugador2, categoria, torneo);
+        pareja.setCostoInscripcionJugador(torneo.getCostoInscripcionJugador());
         parejaRepository.save(pareja);
 
         ParejaResponse parejaDTO = parejaMapper.parejaToResponse(pareja);
@@ -183,6 +185,7 @@ public class ParejaService {
             throw new EstadoInvalidoException("La pareja no pertenece al torneo indicado");
         }
 
+        cobroInscripcionService.exigirSinPagos(pareja);
         parejaRepository.delete(pareja);
     }
 

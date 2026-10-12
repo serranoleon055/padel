@@ -64,6 +64,11 @@ public class SolicitudInscripcion {
     @Builder.Default
     private boolean pagada = false;
 
+    /** La pareja que generó al aprobarse. Null mientras está pendiente o si se rechazó. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "pareja_id")
+    private Pareja pareja;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "pago_id")
     private Pago pago;

@@ -71,6 +71,10 @@ public class SecurityConfig {
                         // juega con las sedes que vienen dentro del torneo.
                         .requestMatchers("/api/torneos/*/sedes/*/pagos", "/api/torneos/*/sedes/*/pagos/**").hasRole("DUENIO")
                         .requestMatchers("/api/torneos/*/sedes", "/api/torneos/*/sedes/**").hasRole("ADMIN")
+                        // Quién pagó la inscripción: lo ve y lo cobra el que está en la cancha;
+                        // anular un cobro es del dueño, igual que en la caja.
+                        .requestMatchers(HttpMethod.DELETE, "/api/torneos/*/cobros-inscripcion/**").hasRole("DUENIO")
+                        .requestMatchers("/api/torneos/*/cobros-inscripcion", "/api/torneos/*/cobros-inscripcion/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/torneos/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/home/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/partidos/**").permitAll()

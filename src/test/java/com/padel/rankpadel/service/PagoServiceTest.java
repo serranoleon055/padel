@@ -43,6 +43,9 @@ class PagoServiceTest {
     @Mock
     private ReservaService reservaService;
 
+    @org.mockito.Mock
+    private CobroInscripcionService cobroInscripcionService;
+
     @InjectMocks
     private PagoService pagoService;
 

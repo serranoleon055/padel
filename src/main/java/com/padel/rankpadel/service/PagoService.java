@@ -50,6 +50,7 @@ public class PagoService {
     private final SolicitudInscripcionRepository solicitudInscripcionRepository;
     private final ReservaService reservaService;
     private final InscripcionService inscripcionService;
+    private final CobroInscripcionService cobroInscripcionService;
     private final DisponibilidadCanchaService disponibilidadCanchaService;
     private final MercadoPagoService mercadoPagoService;
     private final NotificacionService notificacionService;
@@ -243,6 +244,9 @@ public class PagoService {
             if (solicitud != null) {
                 solicitud.setPagada(true);
                 solicitudInscripcionRepository.save(solicitud);
+                // Si ya estaba aprobada (el pago se acreditó tarde), la seña va derecho a
+                // la cuenta de la pareja. Si no, la registra la aprobación.
+                cobroInscripcionService.registrarSeniaOnline(solicitud);
             }
         }
     }

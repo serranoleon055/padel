@@ -200,7 +200,7 @@ class TorneoSedeServiceTest {
         void noPagaDeMas() {
             assertThatThrownBy(() -> service.registrarPago(10L, 5L, pago("40001")))
                     .isInstanceOf(EstadoInvalidoException.class)
-                    .hasMessageContaining("40000");
+                    .hasMessageContaining("$40.000");
         }
 
         @Test

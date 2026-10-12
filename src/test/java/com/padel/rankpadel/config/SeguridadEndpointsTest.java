@@ -97,7 +97,8 @@ class SeguridadEndpointsTest {
                 new Caso(HttpMethod.DELETE, "/api/movimientos-caja/1"),
                 // Lo que se le paga a cada club del torneo.
                 new Caso(HttpMethod.POST, "/api/torneos/1/sedes/2/pagos"),
-                new Caso(HttpMethod.DELETE, "/api/torneos/1/sedes/2/pagos/3"));
+                new Caso(HttpMethod.DELETE, "/api/torneos/1/sedes/2/pagos/3"),
+                new Caso(HttpMethod.DELETE, "/api/torneos/1/cobros-inscripcion/4"));
     }
 
     /** Rutas que el empleado del mostrador también usa. */
@@ -126,7 +127,10 @@ class SeguridadEndpointsTest {
                 // poda en la respuesta (TorneoSedeServiceTest).
                 new Caso(HttpMethod.GET, "/api/torneos/1/sedes"),
                 new Caso(HttpMethod.POST, "/api/torneos/1/sedes"),
-                new Caso(HttpMethod.PUT, "/api/torneos/1/sedes/2"));
+                new Caso(HttpMethod.PUT, "/api/torneos/1/sedes/2"),
+                // Quién pagó la inscripción: lo cobra el que está en la cancha.
+                new Caso(HttpMethod.GET, "/api/torneos/1/cobros-inscripcion"),
+                new Caso(HttpMethod.POST, "/api/torneos/1/cobros-inscripcion/parejas/2"));
     }
 
     @ParameterizedTest(name = "{0}")

@@ -33,6 +33,7 @@ import com.padel.rankpadel.repository.PartidoRepository;
 import com.padel.rankpadel.repository.TorneoRepository;
 import com.padel.rankpadel.repository.TorneoSedeRepository;
 import com.padel.rankpadel.util.OrdenCanchas;
+import com.padel.rankpadel.util.Pesos;
 import com.padel.rankpadel.util.UsuarioActual;
 
 import lombok.RequiredArgsConstructor;
@@ -128,7 +129,7 @@ public class TorneoSedeService {
         }
         BigDecimal saldo = saldo(sede);
         if (request.getMonto().compareTo(saldo) > 0) {
-            throw new EstadoInvalidoException("A " + sede.getLugar().getNombre() + " se le deben $" + saldo.toPlainString()
+            throw new EstadoInvalidoException("A " + sede.getLugar().getNombre() + " se le deben " + Pesos.formatear(saldo)
                     + ", no se puede pagar más que eso.");
         }
         sede.getPagos().add(PagoSede.builder()
@@ -206,7 +207,7 @@ public class TorneoSedeService {
 
         BigDecimal pagado = totalPagado(sede);
         if (request.getMontoAcordado() != null && request.getMontoAcordado().compareTo(pagado) < 0) {
-            throw new EstadoInvalidoException("Ya se le pagaron $" + pagado.toPlainString()
+            throw new EstadoInvalidoException("Ya se le pagaron " + Pesos.formatear(pagado)
                     + " a este club: el monto acordado no puede ser menor.");
         }
         if (request.getMontoAcordado() == null && pagado.signum() > 0) {

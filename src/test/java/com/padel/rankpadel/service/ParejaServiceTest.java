@@ -53,6 +53,9 @@ class ParejaServiceTest {
     @Mock
     private ResultadoService resultadoService;
 
+    @org.mockito.Mock
+    private CobroInscripcionService cobroInscripcionService;
+
     @InjectMocks
     private ParejaService parejaService;
 

@@ -1,5 +1,7 @@
 package com.padel.rankpadel.entity;
 
+import java.math.BigDecimal;
+
 import com.padel.rankpadel.enums.EstadoPareja;
 
 import jakarta.persistence.Entity;
@@ -56,4 +58,10 @@ public class Pareja {
     @JoinColumn(name = "categoria_id")
     private Categoria categoria;
 
+    /**
+     * Lo que paga cada jugador de esta pareja, congelado al anotarla. Si después el torneo
+     * cambia el precio, la pareja que ya estaba sigue debiendo lo que se le dijo. Null en
+     * un torneo sin costo.
+     */
+    private BigDecimal costoInscripcionJugador;
 }

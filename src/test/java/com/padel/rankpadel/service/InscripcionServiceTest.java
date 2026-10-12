@@ -47,6 +47,12 @@ class InscripcionServiceTest {
     @Mock
     private ParejaService parejaService;
 
+    @org.mockito.Mock
+    private CobroInscripcionService cobroInscripcionService;
+
+    @org.mockito.Mock
+    private com.padel.rankpadel.repository.ParejaRepository parejaRepository;
+
     @InjectMocks
     private InscripcionService inscripcionService;
 
@@ -77,12 +83,22 @@ class InscripcionServiceTest {
                 .id(5L).torneo(torneo).categoria(categoria).estado(EstadoSolicitud.PENDIENTE)
                 .jugador1(jugador1).jugador2(jugador2).build();
 
+        solicitud.setCostoAplicado(new java.math.BigDecimal("15000"));
+        com.padel.rankpadel.entity.Pareja pareja = com.padel.rankpadel.entity.Pareja.builder().id(30L).build();
+
         when(solicitudInscripcionRepository.findById(5L)).thenReturn(Optional.of(solicitud));
+        when(parejaService.inscribir(eq(1L), any(ParejaRequest.class)))
+                .thenReturn(com.padel.rankpadel.dto.response.ParejaResponse.builder().id(30L).build());
+        when(parejaRepository.findById(30L)).thenReturn(Optional.of(pareja));
 
         inscripcionService.aprobar(5L, null);
 
         verify(parejaService).inscribir(eq(1L), any(ParejaRequest.class));
         verify(solicitudInscripcionRepository).save(solicitud);
         assertThat(solicitud.getEstado()).isEqualTo(EstadoSolicitud.APROBADA);
+        // La pareja queda atada a la solicitud y debe lo que se le dijo al anotarse.
+        assertThat(solicitud.getPareja()).isSameAs(pareja);
+        assertThat(pareja.getCostoInscripcionJugador()).isEqualByComparingTo("15000");
+        verify(cobroInscripcionService).registrarSeniaOnline(solicitud);
     }
 }

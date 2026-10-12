@@ -18,6 +18,7 @@ import com.padel.rankpadel.dto.response.SolicitudInscripcionResponse;
 import com.padel.rankpadel.entity.Categoria;
 import com.padel.rankpadel.entity.Jugador;
 import com.padel.rankpadel.entity.Pago;
+import com.padel.rankpadel.entity.Pareja;
 import com.padel.rankpadel.entity.SolicitudInscripcion;
 import com.padel.rankpadel.entity.Torneo;
 import com.padel.rankpadel.enums.EstadoSolicitud;
@@ -45,6 +46,7 @@ public class InscripcionService {
     private final ParejaRepository parejaRepository;
     private final ParejaService parejaService;
     private final NotificacionService notificacionService;
+    private final CobroInscripcionService cobroInscripcionService;
 
     @Transactional
     public SolicitudInscripcionResponse crear(Long torneoId, SolicitudInscripcionRequest request) {
@@ -176,10 +178,19 @@ public class InscripcionService {
                 .jugador2Id(jugador2.getId())
                 .categoriaId(solicitud.getCategoria().getId())
                 .build();
-        parejaService.inscribir(solicitud.getTorneo().getId(), parejaRequest);
+        Long parejaId = parejaService.inscribir(solicitud.getTorneo().getId(), parejaRequest).getId();
+        Pareja pareja = parejaRepository.findById(parejaId)
+                .orElseThrow(() -> new ResourceNotFoundException("Pareja", parejaId));
+        // Lo que se le dijo al anotarse, aunque el torneo haya cambiado el precio después.
+        if (solicitud.getCostoAplicado() != null) {
+            pareja.setCostoInscripcionJugador(solicitud.getCostoAplicado());
+            parejaRepository.save(pareja);
+        }
 
         solicitud.setEstado(EstadoSolicitud.APROBADA);
+        solicitud.setPareja(pareja);
         solicitudInscripcionRepository.save(solicitud);
+        cobroInscripcionService.registrarSeniaOnline(solicitud);
         return aResponse(solicitud);
     }
 
