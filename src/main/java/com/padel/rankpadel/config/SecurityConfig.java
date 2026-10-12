@@ -81,6 +81,9 @@ public class SecurityConfig {
                         // /calendario, que solo tiene lo que se puede mostrar.
                         .requestMatchers("/api/torneos/*/fixture", "/api/torneos/*/fixture/**").hasRole("ADMIN")
                         .requestMatchers("/api/torneos/*/avisos", "/api/torneos/*/avisos/**").hasRole("ADMIN")
+                        // La plata del torneo (premios, gastos, sponsors, balance) es del dueño.
+                        .requestMatchers("/api/torneos/*/finanzas", "/api/torneos/*/finanzas/**").hasRole("DUENIO")
+                        .requestMatchers("/api/organizador/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/torneos/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/home/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/partidos/**").permitAll()
