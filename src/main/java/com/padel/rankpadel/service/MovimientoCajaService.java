@@ -15,6 +15,7 @@ import com.padel.rankpadel.dto.response.MovimientoSueltoResponse;
 import com.padel.rankpadel.entity.Cliente;
 import com.padel.rankpadel.entity.MovimientoCaja;
 import com.padel.rankpadel.enums.ConceptoMovimientoCaja;
+import com.padel.rankpadel.enums.MedioPago;
 import com.padel.rankpadel.enums.TipoMovimientoCaja;
 import com.padel.rankpadel.exception.EstadoInvalidoException;
 import com.padel.rankpadel.exception.ResourceNotFoundException;
@@ -69,6 +70,9 @@ public class MovimientoCajaService {
 
     @Transactional
     public MovimientoSueltoResponse registrar(MovimientoCajaRequest request) {
+        if (request.getConcepto() != null && request.getConcepto().esDelSistema()) {
+            throw new EstadoInvalidoException("Las inscripciones a torneos se cobran desde la pestaña Cobros del torneo.");
+        }
         TipoMovimientoCaja tipo = resolverTipo(request);
         exigirPermiso(request.getConcepto());
 
@@ -108,6 +112,9 @@ public class MovimientoCajaService {
         if (movimiento.estaAnulado()) {
             throw new EstadoInvalidoException("Ese movimiento ya está anulado.");
         }
+        if (movimiento.getConcepto() != null && movimiento.getConcepto().esDelSistema()) {
+            throw new EstadoInvalidoException("Es el cobro de una inscripción: se anula desde la pestaña Cobros del torneo.");
+        }
         cajaCerradaGuard.exigirDiaAbierto(movimiento.getJornada());
         movimiento.setAnuladoEn(LocalDateTime.now());
         movimiento.setAnuladoPor(UsuarioActual.nombre());
@@ -115,6 +122,44 @@ public class MovimientoCajaService {
         movimientoCajaRepository.save(movimiento);
         log.info("[caja] {} anuló el movimiento {} de ${}. Motivo: {}",
                 movimiento.getAnuladoPor(), id, movimiento.getMonto(), motivo);
+    }
+
+    /**
+     * Un ingreso que no carga una persona en la caja sino otra parte del sistema (el cobro
+     * de una inscripción). Va a la jornada actual, como un cobro en el mostrador, y respeta
+     * el arqueo cerrado.
+     */
+    @Transactional
+    public MovimientoCaja registrarDelSistema(ConceptoMovimientoCaja concepto, String descripcion,
+            BigDecimal monto, MedioPago medio) {
+        LocalDate jornada = disponibilidadCanchaService.fechaDeJornadaActual();
+        cajaCerradaGuard.exigirDiaAbierto(jornada);
+        MovimientoCaja movimiento = movimientoCajaRepository.save(MovimientoCaja.builder()
+                .jornada(jornada)
+                .fecha(LocalDateTime.now())
+                .tipo(concepto.tipoForzado())
+                .concepto(concepto)
+                .descripcion(descripcion)
+                .monto(monto)
+                .medio(medio)
+                .registradoPor(UsuarioActual.nombre())
+                .creadoEn(LocalDateTime.now())
+                .build());
+        log.info("[caja] {} cobró {} de ${} ({})", movimiento.getRegistradoPor(), concepto, monto, descripcion);
+        return movimiento;
+    }
+
+    /** Anula un movimiento del sistema junto con lo que lo originó. Exige la caja de ese día abierta. */
+    @Transactional
+    public void anularDelSistema(MovimientoCaja movimiento, String motivo) {
+        if (movimiento.estaAnulado()) {
+            return;
+        }
+        cajaCerradaGuard.exigirDiaAbierto(movimiento.getJornada());
+        movimiento.setAnuladoEn(LocalDateTime.now());
+        movimiento.setAnuladoPor(UsuarioActual.nombre());
+        movimiento.setMotivoAnulacion(motivo);
+        movimientoCajaRepository.save(movimiento);
     }
 
     @Transactional(readOnly = true)

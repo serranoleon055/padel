@@ -90,6 +90,41 @@ class MovimientoCajaServiceTest {
     }
 
     @Nested
+    @DisplayName("Inscripciones a torneos (las crea el sistema)")
+    class InscripcionTorneo {
+
+        @Test
+        @DisplayName("No se cargan a mano desde la caja")
+        void noSeCarganAMano() {
+            assertThatThrownBy(() -> movimientoCajaService.registrar(pedido(ConceptoMovimientoCaja.INSCRIPCION_TORNEO, "15000")))
+                    .isInstanceOf(EstadoInvalidoException.class)
+                    .hasMessageContaining("Cobros del torneo");
+            verify(movimientoCajaRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Entra como ingreso de la jornada, suma al resultado, y no se anula desde la caja")
+        void delSistema() {
+            MovimientoCaja movimiento = movimientoCajaService.registrarDelSistema(
+                    ConceptoMovimientoCaja.INSCRIPCION_TORNEO, "Inscripción Copa · Ana Paz", new BigDecimal("15000"), MedioPago.EFECTIVO);
+
+            assertThat(movimiento.getTipo()).isEqualTo(TipoMovimientoCaja.INGRESO);
+            assertThat(movimiento.getJornada()).isEqualTo(JORNADA);
+            assertThat(ConceptoMovimientoCaja.INSCRIPCION_TORNEO.afectaResultado()).isTrue();
+            verify(cajaCerradaGuard).exigirDiaAbierto(JORNADA);
+
+            movimiento.setId(9L);
+            when(movimientoCajaRepository.findById(9L)).thenReturn(java.util.Optional.of(movimiento));
+            assertThatThrownBy(() -> movimientoCajaService.anular(9L, "x"))
+                    .isInstanceOf(EstadoInvalidoException.class)
+                    .hasMessageContaining("Cobros del torneo");
+
+            movimientoCajaService.anularDelSistema(movimiento, "se cargó dos veces");
+            assertThat(movimiento.estaAnulado()).isTrue();
+        }
+    }
+
+    @Nested
     @DisplayName("Apertura")
     class Apertura {
 

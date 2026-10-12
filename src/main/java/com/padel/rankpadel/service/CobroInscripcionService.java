@@ -14,15 +14,18 @@ import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.padel.rankpadel.config.Instalacion;
 import com.padel.rankpadel.dto.request.PagoJugadorRequest;
 import com.padel.rankpadel.dto.response.CuentaInscripcionesResponse;
 import com.padel.rankpadel.dto.response.CuentaInscripcionesResponse.CuentaJugador;
 import com.padel.rankpadel.dto.response.CuentaInscripcionesResponse.CuentaPareja;
 import com.padel.rankpadel.entity.Jugador;
+import com.padel.rankpadel.entity.MovimientoCaja;
 import com.padel.rankpadel.entity.Pago;
 import com.padel.rankpadel.entity.PagoInscripcion;
 import com.padel.rankpadel.entity.Pareja;
 import com.padel.rankpadel.entity.SolicitudInscripcion;
+import com.padel.rankpadel.enums.ConceptoMovimientoCaja;
 import com.padel.rankpadel.enums.MedioPago;
 import com.padel.rankpadel.exception.EstadoInvalidoException;
 import com.padel.rankpadel.exception.ResourceNotFoundException;
@@ -50,6 +53,8 @@ public class CobroInscripcionService {
     private final PagoInscripcionRepository pagoInscripcionRepository;
     private final ParejaRepository parejaRepository;
     private final TorneoRepository torneoRepository;
+    private final MovimientoCajaService movimientoCajaService;
+    private final Instalacion instalacion;
 
     @Transactional(readOnly = true)
     public CuentaInscripcionesResponse cuenta(Long torneoId) {
@@ -101,6 +106,13 @@ public class CobroInscripcionService {
                     : nombre(jugador) + " debe " + Pesos.formatear(saldo) + ", no se le puede cobrar más que eso.");
         }
 
+        // En un club la plata entra a la caja del día, como cualquier cobro del mostrador.
+        // Un organizador no tiene caja: su cuenta es la del torneo.
+        MovimientoCaja enCaja = instalacion.esOrganizador() ? null
+                : movimientoCajaService.registrarDelSistema(ConceptoMovimientoCaja.INSCRIPCION_TORNEO,
+                        "Inscripción " + pareja.getTorneo().getNombre() + " · " + nombre(jugador),
+                        request.getMonto(), request.getMedio());
+
         pagoInscripcionRepository.save(PagoInscripcion.builder()
                 .pareja(pareja)
                 .jugador(jugador)
@@ -108,6 +120,7 @@ public class CobroInscripcionService {
                 .monto(request.getMonto())
                 .medio(request.getMedio())
                 .notas(request.getNotas())
+                .movimientoCaja(enCaja)
                 .registradoPor(UsuarioActual.nombre())
                 .creadoEn(LocalDateTime.now())
                 .build());
@@ -125,6 +138,9 @@ public class CobroInscripcionService {
         }
         if (pago.estaAnulado()) {
             throw new EstadoInvalidoException("Ese pago ya está anulado.");
+        }
+        if (pago.getMovimientoCaja() != null) {
+            movimientoCajaService.anularDelSistema(pago.getMovimientoCaja(), motivo);
         }
         pago.setAnuladoEn(LocalDateTime.now());
         pago.setAnuladoPor(UsuarioActual.nombre());

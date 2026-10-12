@@ -28,7 +28,19 @@ public enum ConceptoMovimientoCaja {
     /** Corrección declarada: apareció o faltó plata y se deja asentado con su motivo. */
     AJUSTE,
 
-    OTRO;
+    OTRO,
+
+    /**
+     * La inscripción a un torneo cobrada en el club. No se carga a mano: la crea el cobro
+     * de la inscripción (pestaña Cobros del torneo) y se anula desde ahí, así la cuenta del
+     * jugador y la caja no pueden quedar distintas.
+     */
+    INSCRIPCION_TORNEO;
+
+    /** Los que crea el sistema y no se cargan ni se anulan desde la caja. */
+    public boolean esDelSistema() {
+        return this == INSCRIPCION_TORNEO;
+    }
 
     /**
      * Si solo lo puede cargar el dueño. Son los movimientos que sirven para explicar un
@@ -52,7 +64,7 @@ public enum ConceptoMovimientoCaja {
      */
     public TipoMovimientoCaja tipoForzado() {
         return switch (this) {
-            case APERTURA, COBRO_VARIO -> TipoMovimientoCaja.INGRESO;
+            case APERTURA, COBRO_VARIO, INSCRIPCION_TORNEO -> TipoMovimientoCaja.INGRESO;
             case DEPOSITO_BANCO, RETIRO_DUENIO -> TipoMovimientoCaja.EGRESO;
             case PRESTAMO, AJUSTE, OTRO -> null;
         };
@@ -73,6 +85,6 @@ public enum ConceptoMovimientoCaja {
      * de verdad es un {@code Gasto}, que tiene su categoría y su fecha contable.
      */
     public boolean afectaResultado() {
-        return this == COBRO_VARIO;
+        return this == COBRO_VARIO || this == INSCRIPCION_TORNEO;
     }
 }

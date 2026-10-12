@@ -46,6 +46,8 @@ class CobroInscripcionServiceTest {
     @Mock private PagoInscripcionRepository pagoInscripcionRepository;
     @Mock private ParejaRepository parejaRepository;
     @Mock private TorneoRepository torneoRepository;
+    @Mock private MovimientoCajaService movimientoCajaService;
+    @Mock private com.padel.rankpadel.config.Instalacion instalacion;
 
     @InjectMocks
     private CobroInscripcionService service;
@@ -166,5 +168,44 @@ class CobroInscripcionServiceTest {
         assertThatThrownBy(() -> service.exigirSinPagos(pareja))
                 .isInstanceOf(EstadoInvalidoException.class)
                 .hasMessageContaining("retirala");
+    }
+
+    @Test
+    @DisplayName("En un club, el cobro entra a la caja del día; al anularlo, sale")
+    void clubVaALaCaja() {
+        com.padel.rankpadel.entity.MovimientoCaja movimiento = com.padel.rankpadel.entity.MovimientoCaja.builder().id(70L).build();
+        torneo.setNombre("Copa");
+        when(parejaRepository.findById(5L)).thenReturn(Optional.of(pareja));
+        when(pagoInscripcionRepository.findByParejaId(5L)).thenReturn(List.of());
+        when(instalacion.esOrganizador()).thenReturn(false);
+        when(movimientoCajaService.registrarDelSistema(org.mockito.ArgumentMatchers.eq(com.padel.rankpadel.enums.ConceptoMovimientoCaja.INSCRIPCION_TORNEO),
+                org.mockito.ArgumentMatchers.eq("Inscripción Copa · Ana Paz"), any(), org.mockito.ArgumentMatchers.eq(MedioPago.TRANSFERENCIA)))
+                .thenReturn(movimiento);
+        when(torneoRepository.existsById(1L)).thenReturn(true);
+
+        service.registrar(1L, 5L, cobro(10L, "5000"));
+
+        ArgumentCaptor<PagoInscripcion> captor = ArgumentCaptor.forClass(PagoInscripcion.class);
+        verify(pagoInscripcionRepository).save(captor.capture());
+        assertThat(captor.getValue().getMovimientoCaja()).isSameAs(movimiento);
+
+        PagoInscripcion guardado = captor.getValue();
+        guardado.setId(80L);
+        when(pagoInscripcionRepository.findById(80L)).thenReturn(Optional.of(guardado));
+        service.anular(1L, 80L, "error");
+        verify(movimientoCajaService).anularDelSistema(movimiento, "error");
+    }
+
+    @Test
+    @DisplayName("Un organizador no tiene caja: el cobro queda solo en la cuenta del torneo")
+    void organizadorSinCaja() {
+        when(parejaRepository.findById(5L)).thenReturn(Optional.of(pareja));
+        when(pagoInscripcionRepository.findByParejaId(5L)).thenReturn(List.of());
+        when(instalacion.esOrganizador()).thenReturn(true);
+        when(torneoRepository.existsById(1L)).thenReturn(true);
+
+        service.registrar(1L, 5L, cobro(10L, "5000"));
+
+        verify(movimientoCajaService, never()).registrarDelSistema(any(), any(), any(), any());
     }
 }

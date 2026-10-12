@@ -62,6 +62,11 @@ public class PagoInscripcion {
     @JoinColumn(name = "pago_id")
     private Pago pagoOnline;
 
+    /** En un club, el movimiento de caja que generó este cobro (no los online ni los de un organizador). */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "movimiento_caja_id")
+    private MovimientoCaja movimientoCaja;
+
     private String registradoPor;
     private LocalDateTime creadoEn;
 
