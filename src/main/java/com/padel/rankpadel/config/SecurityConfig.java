@@ -77,6 +77,9 @@ public class SecurityConfig {
                         .requestMatchers("/api/torneos/*/cobros-inscripcion", "/api/torneos/*/cobros-inscripcion/**").hasRole("ADMIN")
                         // Cuándo no puede jugar cada pareja: dato personal, solo para el panel.
                         .requestMatchers("/api/torneos/*/disponibilidad", "/api/torneos/*/disponibilidad/**").hasRole("ADMIN")
+                        // El fixture del panel trae teléfonos y conflictos; la web pública usa
+                        // /calendario, que solo tiene lo que se puede mostrar.
+                        .requestMatchers("/api/torneos/*/fixture", "/api/torneos/*/fixture/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/torneos/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/home/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/partidos/**").permitAll()

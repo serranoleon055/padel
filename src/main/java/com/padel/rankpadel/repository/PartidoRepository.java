@@ -40,6 +40,23 @@ public interface PartidoRepository extends JpaRepository<Partido, Long> {
 
     List<Partido> findByTorneoIdAndFase(Long torneoId, FasePartido fase);
 
+    /**
+     * Partidos de OTROS torneos con horario en estas canchas: un organizador puede correr
+     * dos torneos a la vez en el mismo club y no se pueden pisar.
+     */
+    @Query("""
+        SELECT p FROM Partido p
+        WHERE p.cancha.id IN :canchaIds
+          AND p.torneo.id <> :torneoId
+          AND p.torneo.activo = true
+          AND p.torneo.estado <> com.padel.rankpadel.enums.EstadoTorneo.CANCELADO
+          AND p.fechaHoraProgramada >= :desde AND p.fechaHoraProgramada < :hasta
+          AND p.estado IN (com.padel.rankpadel.enums.EstadoPartido.PENDIENTE, com.padel.rankpadel.enums.EstadoPartido.EN_CURSO)
+        """)
+    List<Partido> findDeOtrosTorneosEnCanchas(@Param("torneoId") Long torneoId,
+            @Param("canchaIds") java.util.Collection<Long> canchaIds,
+            @Param("desde") java.time.LocalDateTime desde, @Param("hasta") java.time.LocalDateTime hasta);
+
     List<Partido> findByGrupoId(Long grupoId);
 
     List<Partido> findByRondaId(Long rondaId);

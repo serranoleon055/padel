@@ -74,6 +74,14 @@ public class ConfiguracionCategoriaTorneo {
     @Enumerated(EnumType.STRING)
     private FormatoPartido formatoPartidoFinales;
 
+    /** Turno de cancha por partido para el fixture. Null = el sugerido por su formato. */
+    private Integer duracionPartidoMinutos;
+
+    /** Club donde se juega toda la categoría, si el organizador la fija a uno. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "lugar_fijo_id")
+    private Lugar lugarFijo;
+
     @Builder.Default
     @Column(name = "mejor_de_sets")
     private Integer mejorDeSets = 3;

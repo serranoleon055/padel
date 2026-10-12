@@ -548,6 +548,18 @@ public class TorneoService {
         if (torneo.getConfiguracionesCategoria() == null) {
             torneo.setConfiguracionesCategoria(new ArrayList<>());
         } else {
+            // Las reglas del fixture (duración, club fijo) se cargan desde el fixture, no
+            // desde este formulario: editar el torneo no las tiene que borrar.
+            for (ConfiguracionCategoriaTorneo nueva : configs) {
+                torneo.getConfiguracionesCategoria().stream()
+                        .filter(vieja -> vieja.getCategoria() != null && nueva.getCategoria() != null
+                                && vieja.getCategoria().getId().equals(nueva.getCategoria().getId()))
+                        .findFirst()
+                        .ifPresent(vieja -> {
+                            nueva.setDuracionPartidoMinutos(vieja.getDuracionPartidoMinutos());
+                            nueva.setLugarFijo(vieja.getLugarFijo());
+                        });
+            }
             torneo.getConfiguracionesCategoria().clear();
         }
         torneo.getConfiguracionesCategoria().addAll(configs);

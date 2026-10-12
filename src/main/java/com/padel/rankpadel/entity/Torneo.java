@@ -114,6 +114,9 @@ public class Torneo {
     private List<ConfiguracionCategoriaTorneo> configuracionesCategoria = new ArrayList<>();
 
     /** Los clubes donde se juega. Se administran desde TorneoSedeService, no desde acá. */
+    /** Lo mínimo que descansa una pareja entre dos partidos. Null = 30 minutos. */
+    private Integer descansoMinimoMinutos;
+
     @Builder.Default
     @OneToMany(mappedBy = "torneo")
     @OrderBy("id ASC")

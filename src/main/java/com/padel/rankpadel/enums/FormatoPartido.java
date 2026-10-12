@@ -10,25 +10,36 @@ package com.padel.rankpadel.enums;
 public enum FormatoPartido {
 
     /** Al mejor de 3 sets a 6 games, el tercero completo. */
-    TRES_SETS(3, 6, false),
+    TRES_SETS(3, 6, false, 90),
 
     /** Al mejor de 3, pero el tercero se define con un super tie-break a 10 puntos. */
-    DOS_SETS_SUPER_TIEBREAK(3, 6, true),
+    DOS_SETS_SUPER_TIEBREAK(3, 6, true, 75),
 
     /** Un único set a 6 games. */
-    UN_SET(1, 6, false),
+    UN_SET(1, 6, false, 45),
 
     /** Un único set a 9 games, con tie-break en 8-8 (termina 9-8). */
-    PRO_SET_9(1, 9, false);
+    PRO_SET_9(1, 9, false, 60);
 
     private final int maximoSets;
     private final int gamesPorSet;
     private final boolean superTiebreakDecisivo;
+    private final int duracionSugeridaMinutos;
 
-    FormatoPartido(int maximoSets, int gamesPorSet, boolean superTiebreakDecisivo) {
+    FormatoPartido(int maximoSets, int gamesPorSet, boolean superTiebreakDecisivo, int duracionSugeridaMinutos) {
         this.maximoSets = maximoSets;
         this.gamesPorSet = gamesPorSet;
         this.superTiebreakDecisivo = superTiebreakDecisivo;
+        this.duracionSugeridaMinutos = duracionSugeridaMinutos;
+    }
+
+    /**
+     * Cuánto turno de cancha se le reserva a un partido así si la categoría no dice otra
+     * cosa. Es lo que usan los organizadores como regla general; cada categoría lo puede
+     * cambiar en las reglas del fixture.
+     */
+    public int getDuracionSugeridaMinutos() {
+        return duracionSugeridaMinutos;
     }
 
     public int getMaximoSets() {

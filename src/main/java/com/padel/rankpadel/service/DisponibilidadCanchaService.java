@@ -328,6 +328,39 @@ public class DisponibilidadCanchaService {
                 inicio, inicio.plusMinutes(DURACION_PARTIDO_MIN));
     }
 
+    /**
+     * Lo que ocupa la cancha y no es un partido: turnos reservados y bloqueos. Lo usa el
+     * fixture, que los partidos ya los cuenta con su duración real. Incluye la jornada
+     * anterior porque sus turnos de madrugada caen en este día de calendario.
+     */
+    public List<ProgramadorFixture.Ocupacion> ocupacionesDelClub(Long canchaId, LocalDate fecha) {
+        LocalTime apertura = aperturaActiva(canchaId);
+        LocalDateTime inicioDia = fecha.atStartOfDay();
+        LocalDateTime finDia = fecha.plusDays(1).atStartOfDay();
+        List<ProgramadorFixture.Ocupacion> ocupadas = new ArrayList<>();
+        LocalDateTime ahora = LocalDateTime.now();
+        for (LocalDate jornada : List.of(fecha.minusDays(1), fecha)) {
+            for (Reserva reserva : reservaRepository.findByCanchaIdAndFecha(canchaId, jornada)) {
+                if (!ESTADOS_ACTIVOS.contains(reserva.getEstado())
+                        || (reserva.getEstado() == EstadoReserva.PENDIENTE && reserva.getExpiraEn() != null
+                                && reserva.getExpiraEn().isBefore(ahora))) {
+                    continue;
+                }
+                LocalDateTime inicio = aDateTime(jornada, reserva.getHoraInicio(), apertura);
+                LocalDateTime fin = inicio.plusMinutes(reserva.getDuracionMin());
+                if (inicio.isBefore(finDia) && fin.isAfter(inicioDia)) {
+                    ocupadas.add(new ProgramadorFixture.Ocupacion(inicio, fin));
+                }
+            }
+        }
+        for (BloqueoCancha bloqueo : bloqueoCanchaRepository.findByCanchaId(canchaId)) {
+            if (bloqueo.getInicio().isBefore(finDia) && bloqueo.getFin().isAfter(inicioDia)) {
+                ocupadas.add(new ProgramadorFixture.Ocupacion(bloqueo.getInicio(), bloqueo.getFin()));
+            }
+        }
+        return ocupadas;
+    }
+
     public LocalDateTime inicioReal(Long canchaId, LocalDate fecha, LocalTime hora) {
         return aDateTime(fecha, hora, aperturaActiva(canchaId));
     }
