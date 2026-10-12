@@ -92,6 +92,9 @@ class TorneoServiceTest {
     @Mock
     private CampeonService campeonService;
 
+    @Mock
+    private TorneoSedeService torneoSedeService;
+
     @InjectMocks
     private TorneoService torneoService;
 

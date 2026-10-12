@@ -98,6 +98,7 @@ public class TorneoMapper {
                 .temporadaNombre(getTemporadaNombre(torneo))
                 .lugarId(getLugarId(torneo))
                 .lugarNombre(getLugarNombre(torneo))
+                .sedes(mapearSedes(torneo))
                 .categorias(mapearCategorias(torneo))
                 .cantidadCategorias(torneo.getCategorias() != null ? torneo.getCategorias().size() : 0)
                 .configuracionPuntos(mapearConfiguracionPuntos(torneo))
@@ -105,6 +106,19 @@ public class TorneoMapper {
                 .build();
 
         return torneoDTO;
+    }
+
+    private List<TorneoResponse.SedePublica> mapearSedes(Torneo torneo) {
+        if (torneo.getSedes() == null) {
+            return List.of();
+        }
+        return torneo.getSedes().stream()
+                .map(sede -> TorneoResponse.SedePublica.builder()
+                        .lugarId(sede.getLugar().getId())
+                        .nombre(sede.getLugar().getNombre())
+                        .direccion(sede.getLugar().getDireccion())
+                        .build())
+                .toList();
     }
 
     private Long getTemporadaId(Torneo torneo) {

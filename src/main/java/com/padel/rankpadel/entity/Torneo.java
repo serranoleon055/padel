@@ -27,6 +27,7 @@ import jakarta.persistence.JoinTable;
 import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -111,5 +112,11 @@ public class Torneo {
     @Builder.Default
     @OneToMany(mappedBy = "torneo", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<ConfiguracionCategoriaTorneo> configuracionesCategoria = new ArrayList<>();
+
+    /** Los clubes donde se juega. Se administran desde TorneoSedeService, no desde acá. */
+    @Builder.Default
+    @OneToMany(mappedBy = "torneo")
+    @OrderBy("id ASC")
+    private List<TorneoSede> sedes = new ArrayList<>();
 
 }

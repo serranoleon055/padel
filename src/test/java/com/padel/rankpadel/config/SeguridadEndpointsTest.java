@@ -94,7 +94,10 @@ class SeguridadEndpointsTest {
                 new Caso(HttpMethod.POST, "/api/sponsors"),
                 new Caso(HttpMethod.POST, "/api/importar/clientes"),
                 // Anular un movimiento de caja, por lo mismo que reabrir un cierre.
-                new Caso(HttpMethod.DELETE, "/api/movimientos-caja/1"));
+                new Caso(HttpMethod.DELETE, "/api/movimientos-caja/1"),
+                // Lo que se le paga a cada club del torneo.
+                new Caso(HttpMethod.POST, "/api/torneos/1/sedes/2/pagos"),
+                new Caso(HttpMethod.DELETE, "/api/torneos/1/sedes/2/pagos/3"));
     }
 
     /** Rutas que el empleado del mostrador también usa. */
@@ -118,7 +121,19 @@ class SeguridadEndpointsTest {
                 // porque depende del cuerpo del pedido y no de la ruta.
                 new Caso(HttpMethod.POST, "/api/movimientos-caja/apertura"),
                 new Caso(HttpMethod.POST, "/api/movimientos-caja"),
-                new Caso(HttpMethod.GET, "/api/movimientos-caja"));
+                new Caso(HttpMethod.GET, "/api/movimientos-caja"),
+                // Los clubes del torneo los arma también el colaborador; la plata se le
+                // poda en la respuesta (TorneoSedeServiceTest).
+                new Caso(HttpMethod.GET, "/api/torneos/1/sedes"),
+                new Caso(HttpMethod.POST, "/api/torneos/1/sedes"),
+                new Caso(HttpMethod.PUT, "/api/torneos/1/sedes/2"));
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("tambienElMostrador")
+    @DisplayName("Lo del panel no se abre sin token, aunque cuelgue de una ruta pública")
+    void panel_sinTokenRecibe401(Caso caso) throws Exception {
+        assertThat(estado(caso, null)).isEqualTo(401);
     }
 
     /** Lo que tiene que andar sin estar logueado, porque lo usa el sitio público. */

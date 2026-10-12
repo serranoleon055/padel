@@ -66,6 +66,11 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/jugadores/*/ficha").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/jugadores/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/categorias/**").permitAll()
+                        // Los clubes del torneo llevan lo que se le paga a cada uno: no son
+                        // públicos aunque cuelguen de /api/torneos. La web muestra dónde se
+                        // juega con las sedes que vienen dentro del torneo.
+                        .requestMatchers("/api/torneos/*/sedes/*/pagos", "/api/torneos/*/sedes/*/pagos/**").hasRole("DUENIO")
+                        .requestMatchers("/api/torneos/*/sedes", "/api/torneos/*/sedes/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/torneos/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/home/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/partidos/**").permitAll()

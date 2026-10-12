@@ -5,6 +5,7 @@ import org.springframework.stereotype.Component;
 import com.padel.rankpadel.dto.response.PartidoResponse;
 import com.padel.rankpadel.entity.Categoria;
 import com.padel.rankpadel.entity.ConfiguracionCategoriaTorneo;
+import com.padel.rankpadel.entity.Lugar;
 import com.padel.rankpadel.entity.Pareja;
 import com.padel.rankpadel.entity.Partido;
 import com.padel.rankpadel.util.FormatoPorFase;
@@ -29,12 +30,8 @@ public class PartidoMapper {
                                 .torneoNombre(partido.getTorneo() != null ? partido.getTorneo().getNombre() : null)
                                 .categoriaId(categoria != null ? categoria.getId() : null)
                                 .categoriaNombre(categoria != null ? categoria.getNombre() : null)
-                                .lugarId(partido.getTorneo() != null && partido.getTorneo().getLugar() != null
-                                                ? partido.getTorneo().getLugar().getId()
-                                                : null)
-                                .lugarNombre(partido.getTorneo() != null && partido.getTorneo().getLugar() != null
-                                                ? partido.getTorneo().getLugar().getNombre()
-                                                : null)
+                                .lugarId(lugarDelPartido(partido) != null ? lugarDelPartido(partido).getId() : null)
+                                .lugarNombre(lugarDelPartido(partido) != null ? lugarDelPartido(partido).getNombre() : null)
                                 .grupoId(partido.getGrupo() != null ? partido.getGrupo().getId() : null)
                                 .grupoNombre(partido.getGrupo() != null ? partido.getGrupo().getNombre() : null)
                                 .rondaId(partido.getRonda() != null ? partido.getRonda().getId() : null)
@@ -65,6 +62,18 @@ public class PartidoMapper {
                 }
 
                 return builder.build();
+        }
+
+        /**
+         * Donde se juega el partido: el club de su cancha. Un torneo puede repartirse en
+         * varios clubes, así que el lugar del torneo es solo el respaldo para un partido
+         * que todavía no tiene cancha.
+         */
+        private Lugar lugarDelPartido(Partido partido) {
+                if (partido.getCancha() != null && partido.getCancha().getLugar() != null) {
+                        return partido.getCancha().getLugar();
+                }
+                return partido.getTorneo() != null ? partido.getTorneo().getLugar() : null;
         }
 
         /**

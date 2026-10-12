@@ -64,6 +64,7 @@ public class TorneoService {
     private final RankingService rankingService;
     private final CampeonService campeonService;
     private final ImageStorageService imageStorageService;
+    private final TorneoSedeService torneoSedeService;
 
     private static final Map<EstadoTorneo, List<EstadoTorneo>> TRANSICIONES = Map.of(
             EstadoTorneo.BORRADOR, List.of(EstadoTorneo.INSCRIPCION, EstadoTorneo.CANCELADO),
@@ -143,6 +144,7 @@ public class TorneoService {
         }
 
         torneoRepository.save(torneo);
+        torneoSedeService.asegurarSedePrincipal(torneo);
 
         aplicarPlantillaPuntosTorneoMeta(torneo, torneoRequest.getPlantillaPuntosId());
         sincronizarConfiguracionPorCategoria(torneo, torneoRequest);
@@ -205,6 +207,7 @@ public class TorneoService {
         }
 
         torneoRepository.save(torneoExistente);
+        torneoSedeService.asegurarSedePrincipal(torneoExistente);
         return mapearConMetricas(torneoExistente);
     }
 

@@ -53,6 +53,8 @@ public class TorneoResponse {
     private String temporadaNombre;
     private Long lugarId;
     private String lugarNombre;
+    /** Todos los clubes donde se juega (el principal incluido). Público: sin montos. */
+    private List<SedePublica> sedes;
     private List<CategoriaResponse> categorias;
     private long cantidadCategorias;
     private long cantidadParejas;
@@ -61,4 +63,15 @@ public class TorneoResponse {
     private List<ConfiguracionPuntosResponse> configuracionPuntos;
     private List<ConfiguracionCategoriaTorneoResponse> configuracionesCategoria;
 
+
+    @Getter
+    @Setter
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class SedePublica {
+        private Long lugarId;
+        private String nombre;
+        private String direccion;
+    }
 }
