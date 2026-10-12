@@ -194,6 +194,7 @@ la barra final).
 | `ADMIN_INITIAL_PASSWORD` | sí | contraseña fuerte (mín. 8; el panel exige 10) |
 | `ADMIN_USERNAME` | no | default `admin` |
 | `APP_CORS_ALLOWED_ORIGINS` | sí | dominio del front, p. ej. `https://omapadel.com.ar` (varios con coma) |
+| `APP_MODO` | no | `CLUB` (default) u `ORGANIZADOR`. El organizador no tiene turnos, caja ni stock: esos endpoints dan 404. Tiene que coincidir con `VITE_MODO` del front |
 | `JAVA_TOOL_OPTIONS` | recomendado | `-Xmx384m` — baja la factura de Railway |
 | `CLOUDINARY_CLOUD_NAME` / `_API_KEY` / `_API_SECRET` | recomendado | si se definen, las fotos van a Cloudinary |
 | `UPLOAD_DIR` | solo sin Cloudinary | `/data/uploads` (ruta del volumen) |

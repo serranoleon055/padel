@@ -35,7 +35,7 @@ import com.padel.rankpadel.util.JwtUtil;
  */
 @WebMvcTest(controllers = SeguridadEndpointsTest.ControladorDePrueba.class)
 @Import({ SecurityConfig.class, JwtFilter.class, LoginRateLimitFilter.class,
-        PublicWriteRateLimitFilter.class, ClienteIp.class, JwtUtil.class })
+        PublicWriteRateLimitFilter.class, ClienteIp.class, JwtUtil.class, Instalacion.class })
 @TestPropertySource(properties = {
         "jwt.secret=cmFua3BhZGVsLXRlc3Qta2V5LWRlLXRyZWludGEteS1kb3MtY2hhcnMtbWluaW1v",
         "jwt.expiration-ms=86400000",
