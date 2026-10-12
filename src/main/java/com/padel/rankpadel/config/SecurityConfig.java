@@ -75,6 +75,8 @@ public class SecurityConfig {
                         // anular un cobro es del dueño, igual que en la caja.
                         .requestMatchers(HttpMethod.DELETE, "/api/torneos/*/cobros-inscripcion/**").hasRole("DUENIO")
                         .requestMatchers("/api/torneos/*/cobros-inscripcion", "/api/torneos/*/cobros-inscripcion/**").hasRole("ADMIN")
+                        // Cuándo no puede jugar cada pareja: dato personal, solo para el panel.
+                        .requestMatchers("/api/torneos/*/disponibilidad", "/api/torneos/*/disponibilidad/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/torneos/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/home/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/partidos/**").permitAll()

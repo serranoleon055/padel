@@ -130,7 +130,10 @@ class SeguridadEndpointsTest {
                 new Caso(HttpMethod.PUT, "/api/torneos/1/sedes/2"),
                 // Quién pagó la inscripción: lo cobra el que está en la cancha.
                 new Caso(HttpMethod.GET, "/api/torneos/1/cobros-inscripcion"),
-                new Caso(HttpMethod.POST, "/api/torneos/1/cobros-inscripcion/parejas/2"));
+                new Caso(HttpMethod.POST, "/api/torneos/1/cobros-inscripcion/parejas/2"),
+                // Cuándo no puede jugar cada pareja: dato personal, no público.
+                new Caso(HttpMethod.GET, "/api/torneos/1/disponibilidad"),
+                new Caso(HttpMethod.PUT, "/api/torneos/1/disponibilidad/2"));
     }
 
     @ParameterizedTest(name = "{0}")

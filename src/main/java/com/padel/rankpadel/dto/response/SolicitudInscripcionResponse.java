@@ -32,4 +32,7 @@ public class SolicitudInscripcionResponse {
     private boolean pagada;
     private String estadoPago;
     private BigDecimal montoSenia;
+    /** Cuándo no pueden jugar, ya en palabras ("sábado 7/11 de 09:00 a 14:00"). */
+    private List<String> horariosNoDisponibles;
+    private String restriccionesNotas;
 }

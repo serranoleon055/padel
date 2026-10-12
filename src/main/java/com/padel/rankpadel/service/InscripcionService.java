@@ -19,6 +19,7 @@ import com.padel.rankpadel.entity.Categoria;
 import com.padel.rankpadel.entity.Jugador;
 import com.padel.rankpadel.entity.Pago;
 import com.padel.rankpadel.entity.Pareja;
+import com.padel.rankpadel.entity.RestriccionHoraria;
 import com.padel.rankpadel.entity.SolicitudInscripcion;
 import com.padel.rankpadel.entity.Torneo;
 import com.padel.rankpadel.enums.EstadoSolicitud;
@@ -118,6 +119,8 @@ public class InscripcionService {
 
         aplicarIntegrante(solicitud, request.getJugador1(), 1);
         aplicarIntegrante(solicitud, request.getJugador2(), 2);
+        solicitud.getRestricciones().addAll(DisponibilidadParejaService.validar(request.getRestricciones()));
+        solicitud.setRestriccionesNotas(DisponibilidadParejaService.limpiar(request.getRestriccionesNotas()));
 
         return solicitud;
     }
@@ -184,8 +187,13 @@ public class InscripcionService {
         // Lo que se le dijo al anotarse, aunque el torneo haya cambiado el precio después.
         if (solicitud.getCostoAplicado() != null) {
             pareja.setCostoInscripcionJugador(solicitud.getCostoAplicado());
-            parejaRepository.save(pareja);
         }
+        pareja.getRestricciones().addAll(solicitud.getRestricciones().stream()
+                .map(r -> RestriccionHoraria.builder().fecha(r.getFecha()).diaSemana(r.getDiaSemana())
+                        .horaDesde(r.getHoraDesde()).horaHasta(r.getHoraHasta()).build())
+                .toList());
+        pareja.setRestriccionesNotas(solicitud.getRestriccionesNotas());
+        parejaRepository.save(pareja);
 
         solicitud.setEstado(EstadoSolicitud.APROBADA);
         solicitud.setPareja(pareja);
@@ -290,6 +298,8 @@ public class InscripcionService {
                         ? solicitud.getPago().getEstado().name()
                         : null)
                 .montoSenia(solicitud.getPago() != null ? solicitud.getPago().getMontoSenia() : null)
+                .horariosNoDisponibles(solicitud.getRestricciones().stream().map(DisponibilidadParejaService::describir).toList())
+                .restriccionesNotas(solicitud.getRestriccionesNotas())
                 .build();
     }
 

@@ -1,9 +1,13 @@
 package com.padel.rankpadel.entity;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
 
 import com.padel.rankpadel.enums.EstadoPareja;
 
+import jakarta.persistence.CollectionTable;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -64,4 +68,13 @@ public class Pareja {
      * un torneo sin costo.
      */
     private BigDecimal costoInscripcionJugador;
+
+    /** Cuándo no pueden jugar. Lo cargan al inscribirse y lo puede corregir el organizador. */
+    @Builder.Default
+    @ElementCollection
+    @CollectionTable(name = "pareja_restricciones", joinColumns = @JoinColumn(name = "pareja_id"))
+    private List<RestriccionHoraria> restricciones = new ArrayList<>();
+
+    /** Lo que no entra en una franja ("si se puede, que no sea el primer turno"). */
+    private String restriccionesNotas;
 }

@@ -3,12 +3,16 @@ package com.padel.rankpadel.entity;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 import com.padel.rankpadel.enums.EstadoSolicitud;
 import com.padel.rankpadel.enums.Genero;
 import com.padel.rankpadel.enums.PosicionJuego;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.CollectionTable;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -63,6 +67,14 @@ public class SolicitudInscripcion {
 
     @Builder.Default
     private boolean pagada = false;
+
+    /** Cuándo no pueden jugar, tal como lo cargaron. Pasa a la pareja al aprobarse. */
+    @Builder.Default
+    @ElementCollection
+    @CollectionTable(name = "solicitud_restricciones", joinColumns = @JoinColumn(name = "solicitud_id"))
+    private List<RestriccionHoraria> restricciones = new ArrayList<>();
+
+    private String restriccionesNotas;
 
     /** La pareja que generó al aprobarse. Null mientras está pendiente o si se rechazó. */
     @ManyToOne(fetch = FetchType.LAZY)

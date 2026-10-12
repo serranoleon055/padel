@@ -1,7 +1,12 @@
 package com.padel.rankpadel.dto.request;
 
+import java.util.List;
+
+import com.padel.rankpadel.dto.RestriccionHorariaDto;
+
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -27,4 +32,12 @@ public class SolicitudInscripcionRequest {
     @NotNull
     @Valid
     private IntegranteInscripcionRequest jugador2;
+
+    /** Cuándo no pueden jugar. Opcional: el que no carga nada queda disponible siempre. */
+    @Valid
+    @Size(max = 30, message = "Son demasiados horarios: resumí el resto en la aclaración")
+    private List<RestriccionHorariaDto> restricciones;
+
+    @Size(max = 500)
+    private String restriccionesNotas;
 }
