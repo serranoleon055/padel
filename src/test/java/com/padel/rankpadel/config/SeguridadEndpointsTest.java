@@ -137,7 +137,9 @@ class SeguridadEndpointsTest {
                 // El fixture del panel trae teléfonos de los jugadores.
                 new Caso(HttpMethod.GET, "/api/torneos/1/fixture"),
                 new Caso(HttpMethod.POST, "/api/torneos/1/fixture/propuesta"),
-                new Caso(HttpMethod.PUT, "/api/torneos/1/fixture/partidos/2"));
+                new Caso(HttpMethod.PUT, "/api/torneos/1/fixture/partidos/2"),
+                new Caso(HttpMethod.GET, "/api/torneos/1/avisos"),
+                new Caso(HttpMethod.POST, "/api/torneos/1/avisos"));
     }
 
     @ParameterizedTest(name = "{0}")
