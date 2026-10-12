@@ -424,6 +424,9 @@ public class TorneoService {
             config.setIncluyeFaseGrupos(req.isIncluyeFaseGrupos());
             config.setIncluyeEliminacion(req.isIncluyeEliminacion());
             config.setMejorDeSets(TorneoMapper.mejorDeSetsPorDefecto(req.getMejorDeSets(), formato));
+            config.setFormatoPartidoGrupos(req.getFormatoPartidoGrupos());
+            config.setFormatoPartidoEliminacion(req.getFormatoPartidoEliminacion());
+            config.setFormatoPartidoFinales(req.getFormatoPartidoFinales());
             config.setCupo(req.getCantidadParejasObjetivo());
             resolverMetaPlantillaFormato(config, req.getPlantillaFormatoId());
             aplicarPlantillaPuntosMetaAConfig(config, req.getPlantillaPuntosId());

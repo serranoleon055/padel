@@ -8,6 +8,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import com.padel.rankpadel.util.FormatoPorFase;
+import com.padel.rankpadel.util.MarcadorPadel;
 import com.padel.rankpadel.util.BracketSeeder;
 import com.padel.rankpadel.util.PosicionGrupoOrdenador;
 
@@ -26,6 +28,7 @@ import com.padel.rankpadel.entity.Torneo;
 import com.padel.rankpadel.enums.EstadoPartido;
 import com.padel.rankpadel.enums.EstadoTorneo;
 import com.padel.rankpadel.enums.FasePartido;
+import com.padel.rankpadel.enums.FormatoPartido;
 import com.padel.rankpadel.exception.EstadoInvalidoException;
 import com.padel.rankpadel.exception.ResourceNotFoundException;
 import com.padel.rankpadel.mapper.PartidoMapper;
@@ -171,7 +174,7 @@ public class ResultadoService {
         posVisitante.setSetsGanados(posVisitante.getSetsGanados() - setsVisitante);
         posVisitante.setSetsPerdidos(posVisitante.getSetsPerdidos() - setsLocal);
 
-        int[] juegos = contarJuegos(partido.getMarcador());
+        int[] juegos = MarcadorPadel.contarGames(partido.getMarcador(), formatoDelPartido(partido));
         posLocal.setJuegosGanados(posLocal.getJuegosGanados() - juegos[0]);
         posLocal.setJuegosPerdidos(posLocal.getJuegosPerdidos() - juegos[1]);
         posVisitante.setJuegosGanados(posVisitante.getJuegosGanados() - juegos[1]);
@@ -192,67 +195,9 @@ public class ResultadoService {
     }
 
     private Pareja determinarGanador(Partido partido, String marcador) {
-        if (!marcador.matches("\\d+-\\d+(\\s*/\\s*\\d+-\\d+)*")) {
-            throw new EstadoInvalidoException("El marcador debe tener formato 6-3 / 4-6 / 7-5");
-        }
-
-        int mejorDe = mejorDeSetsDeCategoria(partido);
-        int setsParaGanar = (mejorDe / 2) + 1;
-
-        String[] sets = marcador.split("\\s*/\\s*");
-        if (sets.length < setsParaGanar || sets.length > mejorDe) {
-            throw new EstadoInvalidoException(mejorDe == 1
-                    ? "Este torneo es a 1 set: cargá un único set (por ejemplo 6-3)"
-                    : "Un partido de pádel se define al mejor de " + mejorDe + " sets: cargá entre "
-                            + setsParaGanar + " y " + mejorDe + " sets");
-        }
-
-        int setsLocal = 0;
-        int setsVisitante = 0;
-
-        for (int i = 0; i < sets.length; i++) {
-            String[] games = sets[i].trim().split("-");
-            int gamesLocal = Integer.parseInt(games[0].trim());
-            int gamesVisitante = Integer.parseInt(games[1].trim());
-            if (gamesLocal == gamesVisitante) {
-                throw new EstadoInvalidoException("Un set no puede terminar empatado");
-            }
-            validarSet(gamesLocal, gamesVisitante, i + 1);
-            if (gamesLocal > gamesVisitante) {
-                setsLocal++;
-            } else {
-                setsVisitante++;
-            }
-            if ((setsLocal == setsParaGanar || setsVisitante == setsParaGanar) && i < sets.length - 1) {
-                throw new EstadoInvalidoException("El partido ya quedó definido; no puede tener más sets");
-            }
-        }
-
-        if (setsLocal != setsParaGanar && setsVisitante != setsParaGanar) {
-            throw new EstadoInvalidoException("El partido no está definido: el ganador debe ganar " + setsParaGanar
-                    + (setsParaGanar == 1 ? " set" : " sets"));
-        }
-
-        return setsLocal > setsVisitante ? partido.getLocal() : partido.getVisitante();
-    }
-
-    private void validarSet(int local, int visitante, int numSet) {
-        int ganador = Math.max(local, visitante);
-        int perdedor = Math.min(local, visitante);
-        int diferencia = ganador - perdedor;
-
-        if (ganador < 6) {
-            throw new EstadoInvalidoException("El set " + numSet + " no tiene un marcador válido (mínimo 6 juegos): " + local + "-" + visitante);
-        }
-        if (ganador == 6 && diferencia < 2) {
-            throw new EstadoInvalidoException("El set " + numSet + " con " + local + "-" + visitante + " no es válido: se necesita ventaja de 2 o llegar a 7");
-        }
-        if (ganador == 7 && perdedor < 5) {
-            throw new EstadoInvalidoException("El set " + numSet + " con " + local + "-" + visitante + " no es un marcador válido de pádel");
-        }
-        if (ganador > 7) {
-            throw new EstadoInvalidoException("Un set no puede superar 7 juegos: " + local + "-" + visitante);
-        }
+        return MarcadorPadel.ganoElLocal(marcador, formatoDelPartido(partido))
+                ? partido.getLocal()
+                : partido.getVisitante();
     }
 
     private void actualizarPosicionesGrupo(Partido partido) {
@@ -277,7 +222,7 @@ public class ResultadoService {
         posVisitante.setSetsGanados(posVisitante.getSetsGanados() + setsVisitante);
         posVisitante.setSetsPerdidos(posVisitante.getSetsPerdidos() + setsLocal);
 
-        int[] juegos = contarJuegos(partido.getMarcador());
+        int[] juegos = MarcadorPadel.contarGames(partido.getMarcador(), formatoDelPartido(partido));
         posLocal.setJuegosGanados(posLocal.getJuegosGanados() + juegos[0]);
         posLocal.setJuegosPerdidos(posLocal.getJuegosPerdidos() + juegos[1]);
         posVisitante.setJuegosGanados(posVisitante.getJuegosGanados() + juegos[1]);
@@ -295,22 +240,6 @@ public class ResultadoService {
 
         posicionGrupoRepository.save(posLocal);
         posicionGrupoRepository.save(posVisitante);
-    }
-
-    private int[] contarJuegos(String marcador) {
-        if (marcador == null || marcador.isBlank()) return new int[]{0, 0};
-        String[] sets = marcador.split("\\s*/\\s*");
-        int juegosLocal = 0, juegosVisitante = 0;
-        for (String set : sets) {
-            String[] games = set.trim().split("-");
-            if (games.length < 2) continue;
-            try {
-                juegosLocal += Integer.parseInt(games[0].trim());
-                juegosVisitante += Integer.parseInt(games[1].trim());
-            } catch (NumberFormatException ignored) {
-            }
-        }
-        return new int[]{juegosLocal, juegosVisitante};
     }
 
     private int[] contarSets(String marcador) {
@@ -512,18 +441,13 @@ public class ResultadoService {
         }
     }
 
-    private int mejorDeSetsDeCategoria(Partido partido) {
+    private FormatoPartido formatoDelPartido(Partido partido) {
         Long categoriaId = categoriaIdDePartido(partido);
-        if (categoriaId != null) {
-            Integer mejorDe = configuracionCategoriaTorneoRepository
-                    .findByTorneoIdAndCategoriaId(partido.getTorneo().getId(), categoriaId)
-                    .map(ConfiguracionCategoriaTorneo::getMejorDeSets)
-                    .orElse(null);
-            if (mejorDe != null) {
-                return mejorDe;
-            }
-        }
-        return partido.getTorneo().getMejorDeSets() != null ? partido.getTorneo().getMejorDeSets() : 3;
+        ConfiguracionCategoriaTorneo config = categoriaId == null ? null
+                : configuracionCategoriaTorneoRepository
+                        .findByTorneoIdAndCategoriaId(partido.getTorneo().getId(), categoriaId)
+                        .orElse(null);
+        return FormatoPorFase.resolver(partido, config);
     }
 
     private int avanzanPorGrupoDeCategoria(Torneo torneo, Long categoriaId) {

@@ -2,6 +2,7 @@ package com.padel.rankpadel.dto.response;
 
 import java.util.List;
 
+import com.padel.rankpadel.enums.FormatoPartido;
 import com.padel.rankpadel.enums.FormatoTorneo;
 import com.padel.rankpadel.enums.TipoSorteo;
 
@@ -33,6 +34,9 @@ public class ConfiguracionCategoriaTorneoResponse {
     private boolean incluyeEliminacion;
     private TipoSorteo tipoSorteo;
     private Integer mejorDeSets;
+    private FormatoPartido formatoPartidoGrupos;
+    private FormatoPartido formatoPartidoEliminacion;
+    private FormatoPartido formatoPartidoFinales;
     private Integer cupo;
     private List<ConfiguracionPuntosResponse> configuracionPuntos;
 }

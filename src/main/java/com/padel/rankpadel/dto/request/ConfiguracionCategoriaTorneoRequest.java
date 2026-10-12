@@ -3,6 +3,7 @@ package com.padel.rankpadel.dto.request;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.padel.rankpadel.enums.FormatoPartido;
 import com.padel.rankpadel.enums.FormatoTorneo;
 import com.padel.rankpadel.enums.TipoSorteo;
 
@@ -34,6 +35,9 @@ public class ConfiguracionCategoriaTorneoRequest {
     private boolean incluyeEliminacion;
     private TipoSorteo tipoSorteo;
     private Integer mejorDeSets;
+    private FormatoPartido formatoPartidoGrupos;
+    private FormatoPartido formatoPartidoEliminacion;
+    private FormatoPartido formatoPartidoFinales;
     private Integer cupo;
 
     @Builder.Default

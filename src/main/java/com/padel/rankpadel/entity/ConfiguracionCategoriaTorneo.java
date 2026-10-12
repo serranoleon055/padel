@@ -1,5 +1,6 @@
 package com.padel.rankpadel.entity;
 
+import com.padel.rankpadel.enums.FormatoPartido;
 import com.padel.rankpadel.enums.FormatoTorneo;
 import com.padel.rankpadel.enums.TipoSorteo;
 
@@ -58,6 +59,20 @@ public class ConfiguracionCategoriaTorneo {
 
     @Enumerated(EnumType.STRING)
     private TipoSorteo tipoSorteo;
+
+    /**
+     * Formato de partido por fase. Null = hereda (ver {@code FormatoPorFase}): la zona y la
+     * llave toman el de {@link #mejorDeSets}, y las finales el de la llave.
+     */
+    @Enumerated(EnumType.STRING)
+    private FormatoPartido formatoPartidoGrupos;
+
+    @Enumerated(EnumType.STRING)
+    private FormatoPartido formatoPartidoEliminacion;
+
+    /** Semifinales y final. */
+    @Enumerated(EnumType.STRING)
+    private FormatoPartido formatoPartidoFinales;
 
     @Builder.Default
     @Column(name = "mejor_de_sets")

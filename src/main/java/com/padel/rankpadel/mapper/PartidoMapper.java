@@ -4,8 +4,10 @@ import org.springframework.stereotype.Component;
 
 import com.padel.rankpadel.dto.response.PartidoResponse;
 import com.padel.rankpadel.entity.Categoria;
+import com.padel.rankpadel.entity.ConfiguracionCategoriaTorneo;
 import com.padel.rankpadel.entity.Pareja;
 import com.padel.rankpadel.entity.Partido;
+import com.padel.rankpadel.util.FormatoPorFase;
 
 import jakarta.persistence.EntityNotFoundException;
 
@@ -42,6 +44,7 @@ public class PartidoMapper {
                                 .parejaLocalId(partido.getLocal() != null ? partido.getLocal().getId() : null)
                                 .parejaVisitanteId(partido.getVisitante() != null ? partido.getVisitante().getId() : null)
                                 .marcador(partido.getMarcador())
+                                .formatoPartido(FormatoPorFase.resolver(partido, configDeCategoria(partido, categoria)))
                                 .ganadorId(partido.getGanador() != null ? partido.getGanador().getId() : null)
                                 .ganadorNombre(formatearPareja(partido.getGanador()));
 
@@ -62,6 +65,22 @@ public class PartidoMapper {
                 }
 
                 return builder.build();
+        }
+
+        /**
+         * Sale de la colección del torneo y no del repositorio: en un listado todos los
+         * partidos comparten torneo y la colección se carga una sola vez.
+         */
+        private ConfiguracionCategoriaTorneo configDeCategoria(Partido partido, Categoria categoria) {
+                if (categoria == null || partido.getTorneo() == null
+                                || partido.getTorneo().getConfiguracionesCategoria() == null) {
+                        return null;
+                }
+                return partido.getTorneo().getConfiguracionesCategoria().stream()
+                                .filter(config -> config.getCategoria() != null
+                                                && categoria.getId().equals(config.getCategoria().getId()))
+                                .findFirst()
+                                .orElse(null);
         }
 
         private Categoria obtenerCategoria(Partido partido) {

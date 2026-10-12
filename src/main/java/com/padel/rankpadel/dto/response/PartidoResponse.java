@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 
 import com.padel.rankpadel.enums.EstadoPartido;
 import com.padel.rankpadel.enums.FasePartido;
+import com.padel.rankpadel.enums.FormatoPartido;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -40,6 +41,8 @@ public class PartidoResponse {
     private Long parejaLocalId;
     private Long parejaVisitanteId;
     private String marcador;
+    /** Cómo se juega este partido (según su categoría y su fase): define cuántos sets se cargan. */
+    private FormatoPartido formatoPartido;
     private Long jugadorLocal1Id;
     private String jugadorLocal1Nombre;
     private Long jugadorLocal2Id;
