@@ -2,6 +2,9 @@
 -- cada club cede algunas canchas en ciertos días y horarios, y se le paga un monto
 -- acordado por todo el torneo, en uno o varios pagos.
 --
+-- torneo_sede_franjas lleva un id que nadie mapea: el MySQL gestionado exige clave
+-- primaria en toda tabla (sql_require_primary_key).
+--
 -- torneos.lugar_id se conserva como el club principal (lo que se muestra en la tarjeta
 -- del torneo y lo que usa un club para su sede). Cada torneo existente pasa a tener su
 -- lugar como única sede, con todas sus canchas activas.
@@ -26,6 +29,7 @@ CREATE TABLE torneo_sede_canchas (
 );
 
 CREATE TABLE torneo_sede_franjas (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
     torneo_sede_id BIGINT NOT NULL,
     fecha DATE NOT NULL,
     hora_desde TIME NOT NULL,
